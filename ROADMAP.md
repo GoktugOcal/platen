@@ -33,10 +33,10 @@ Goal: easy to install and trust.
 |---|---|---|
 | shadcn-style UI with left sidebar and light/dark theme | done | uncommitted |
 | Own mDNS discovery (zeroconf), works under AppArmor | done | uncommitted |
-| Public GitHub repo, CI (tests on amd64 and arm64), multi-arch image on GHCR | M | needs your go-ahead to publish |
+| Public GitHub repo, CI (tests on amd64 and arm64), multi-arch image on GHCR | M | approved; CI workflow written |
 | Releases + CHANGELOG, screenshots in README, `compose.demo.yaml` (simulated devices) | S | |
 | Security hardening: CSRF tokens on forms, rate limits on API and uploads, security headers (CSP, frame-ancestors) | M | rPrint already has CSRF and rate limiting |
-| `.env` cleanup on the Pi (rely on discovery) | S | needs your OK |
+| `.env` cleanup on the Pi (rely on discovery) | done | |
 
 ## v0.5: Scanning depth
 Goal: match scanservjs on scanning while keeping Platen's routing.
@@ -78,7 +78,8 @@ and every job still goes through Platen's users, quotas, statistics and job log.
 
 Risk: this is the largest item, and client quirks (AirPrint's URF format, Windows IPP) can take
 time. The prototype comes first and decides whether this becomes v0.7 or moves later. The
-fallback is CUPS printer sharing plus a backend hook (simpler, but the user name is unverified).
+fallback, CUPS printer sharing plus a backend hook, was considered and rejected: the user name
+it reports cannot be verified.
 
 ## v0.8: Integrations and alerts
 | Item | Effort | Notes |
@@ -96,7 +97,6 @@ fallback is CUPS printer sharing plus a backend hook (simpler, but the user name
 | Cost per page (black and white, colour, two-sided discount), credits and balances | M | rPrint and PaperCut have this |
 | CSV export of the job log and statistics | S | |
 | Audit log of admin actions | S | |
-| Translations (Babel / Jinja i18n) plus the first languages | M | languages are your choice |
 | Optional two-factor login (TOTP) | M | |
 
 ## v1.0: Stable
@@ -113,8 +113,8 @@ fallback is CUPS printer sharing plus a backend hook (simpler, but the user name
 - Several Platen servers or sites.
 - Single sign-on: deliberately not planned.
 
-## Open decisions
-1. **Publishing:** create a public GitHub repo and GHCR image (needed for v0.4 CI and releases)?
-2. **Native queue approach:** Python IPP server inside Platen (recommended), or CUPS sharing plus a hook?
-3. **Translations:** which languages first?
-4. **OCR:** stays in "later" unless you want it sooner.
+## Decisions
+- **Publishing:** public GitHub repository, multi-arch image on GHCR (2026-11-23).
+- **Native queue:** Python IPP server inside Platen (2026-11-23).
+- **Language:** English only. Translations are not planned (2026-11-23).
+- **OCR:** stays in "Later" (2026-11-23).

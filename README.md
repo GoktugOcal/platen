@@ -263,7 +263,7 @@ See [ROADMAP.md](ROADMAP.md). In short:
 - **v0.6:** printing depth (preview, options, presets, hold and release)
 - **v0.7:** native print queue (AirPrint / Mopria) with per-user accounting
 - **v0.8:** integrations and alerts (SMB / WebDAV, webhooks, Home Assistant)
-- **v0.9:** accounting and admin (groups, costs, CSV, translations)
+- **v0.9:** accounting and admin (groups, costs, CSV, audit log, two-factor login)
 - **v1.0:** stable (backup, USB, optional driver image, docs)
 
 ## License

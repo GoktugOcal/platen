@@ -12,7 +12,7 @@ from .conftest import login, make_settings
 UUID = "c5c07fc0-11af-4015-9149-6865a79fe16e"
 
 
-def hp_services(ip="192.168.129.80"):
+def hp_services(ip="192.168.1.80"):
     name = "HP LaserJet MFP M234dw (6A1E1A)"
     addrs = [ip, "fe80::522e:66ff:fe47:5066"]
     return [
@@ -26,9 +26,9 @@ def hp_services(ip="192.168.129.80"):
 def test_interpret_dedupes_and_prefers_plain():
     r = interpret(hp_services())
     assert [(p.label, p.uri) for p in r.printers] == [
-        ("HP LaserJet MFP M234dw", "ipp://192.168.129.80:631/ipp/print")]
+        ("HP LaserJet MFP M234dw", "ipp://192.168.1.80:631/ipp/print")]
     assert [(s.label, s.uri) for s in r.scanners] == [
-        ("HP LaserJet MFP M234dw", "http://192.168.129.80:8080/eSCL")]
+        ("HP LaserJet MFP M234dw", "http://192.168.1.80:8080/eSCL")]
 
 
 def test_interpret_labels_and_addresses():
@@ -60,26 +60,26 @@ def test_discovered_devices_are_set_up(tmp_path, printers, scanners):
         login(c)
         services = app.state.services
         asyncio.run(services.sync_devices())
-        assert printers.printers["HP_LaserJet_MFP_M234dw"].uri == "ipp://192.168.129.80:631/ipp/print"
+        assert printers.printers["HP_LaserJet_MFP_M234dw"].uri == "ipp://192.168.1.80:631/ipp/print"
         assert services.device_origin["HP_LaserJet_MFP_M234dw"] == "discovered"
         conf = (sane / "airscan.conf").read_text()
-        assert '"HP LaserJet MFP M234dw" = http://192.168.129.80:8080/eSCL, eSCL' in conf
+        assert '"HP LaserJet MFP M234dw" = http://192.168.1.80:8080/eSCL, eSCL' in conf
         assert services.scanner_source("airscan:e0:HP LaserJet MFP M234dw") == "discovered"
         html = c.get("/devices").text
         assert "Auto-discovered" in html and "found 1 printer and 1 scanner" in html
 
         # The printer moves to a new address: the queue follows it.
-        disc.services = hp_services("192.168.129.99")
+        disc.services = hp_services("192.168.1.99")
         asyncio.run(services.sync_devices())
-        assert printers.printers["HP_LaserJet_MFP_M234dw"].uri == "ipp://192.168.129.99:631/ipp/print"
-        assert "192.168.129.99" in (sane / "airscan.conf").read_text()
+        assert printers.printers["HP_LaserJet_MFP_M234dw"].uri == "ipp://192.168.1.99:631/ipp/print"
+        assert "192.168.1.99" in (sane / "airscan.conf").read_text()
 
 
 def test_manual_entries_win_over_discovery(tmp_path, printers, scanners):
     disc = FakeDiscoverer(hp_services())
     app, sane = _app(tmp_path, printers, scanners, disc, **{
-        "discover_printers": True, "printers": "Office=ipp://192.168.129.80/ipp/print",
-        "scanners": "Office scanner=http://192.168.129.80:8080/eSCL"})
+        "discover_printers": True, "printers": "Office=ipp://192.168.1.80/ipp/print",
+        "scanners": "Office scanner=http://192.168.1.80:8080/eSCL"})
     with TestClient(app) as c:
         login(c)
         services = app.state.services
@@ -125,5 +125,5 @@ def test_scanner_survives_a_missed_discovery_run(tmp_path, printers, scanners):
         asyncio.run(services.sync_devices())
         disc.services = []                      # one run where the answers got lost
         asyncio.run(services.sync_devices())
-        assert "192.168.129.80:8080/eSCL" in (sane / "airscan.conf").read_text()
+        assert "192.168.1.80:8080/eSCL" in (sane / "airscan.conf").read_text()
         assert "HP_LaserJet_MFP_M234dw" in printers.printers
