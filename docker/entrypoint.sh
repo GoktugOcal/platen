@@ -24,4 +24,5 @@ fi
 
 exec uvicorn app.main:create_app --factory \
     --host "${PLATEN_HOST:-0.0.0.0}" --port "${PLATEN_PORT:-8631}" \
-    --no-server-header --proxy-headers
+    --no-server-header --proxy-headers \
+    --forwarded-allow-ips "${PLATEN_TRUSTED_PROXIES:-127.0.0.1}"

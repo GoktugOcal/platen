@@ -54,6 +54,7 @@ def user_out(user: User) -> dict:
         "active": user.active, "allowed_printers": user.printer_list,
         "has_api_token": bool(user.api_token_hash),
         "has_paperless_token": bool(user.paperless_token),
+        "quota_pages": user.quota_pages, "quota_period": user.quota_period,
         "created_at": user.created_at.isoformat(),
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
     }
@@ -67,7 +68,10 @@ def delivery_out(d: Delivery) -> dict:
 
 @router.get("/me")
 async def me(request: Request):
-    return user_out(_user(request))
+    user = _user(request)
+    qs = _svc(request).quota_status(user)
+    return {**user_out(user), "quota": {
+        "limit": qs.limit, "period": qs.period, "used": qs.used, "remaining": qs.remaining}}
 
 
 class UserCreate(BaseModel):
@@ -76,6 +80,8 @@ class UserCreate(BaseModel):
     role: str = Role.USER
     email: str = ""
     allowed_printers: list[str] = Field(default_factory=list)
+    quota_pages: int = 0
+    quota_period: str = "month"
 
 
 class UserUpdate(BaseModel):
@@ -84,6 +90,8 @@ class UserUpdate(BaseModel):
     active: bool | None = None
     allowed_printers: list[str] | None = None
     password: str | None = None
+    quota_pages: int | None = None
+    quota_period: str | None = None
 
 
 @router.get("/users")
@@ -97,7 +105,7 @@ async def create_user(request: Request, body: UserCreate):
     _admin(request)
     user = await asyncio.to_thread(
         request.app.state.users.create, body.username, body.password, body.role, body.email,
-        ",".join(body.allowed_printers),
+        ",".join(body.allowed_printers), body.quota_pages, body.quota_period,
     )
     return user_out(user)
 
@@ -110,6 +118,7 @@ async def update_user(request: Request, user_id: int, body: UserUpdate):
         user_id, role=body.role, email=body.email, active=body.active,
         allowed_printers=(",".join(body.allowed_printers)
                           if body.allowed_printers is not None else None),
+        quota_pages=body.quota_pages, quota_period=body.quota_period,
     )
     if body.password:
         user = await asyncio.to_thread(users.set_password, user_id, body.password)
@@ -139,6 +148,29 @@ async def scanner_capabilities(request: Request, device: str):
     svc = _svc(request)
     await svc.get_scanner(device)
     return asdict(await svc.scanner_caps(device))
+
+
+# --- statistics ----------------------------------------------------------------
+
+@router.get("/stats")
+async def stats(request: Request, range: str = "30d", user: str | None = None):
+    """Usage statistics. range: 7d, 30d, 90d, 365d or mtd. Admins may filter by user."""
+    st = _svc(request).stats(_user(request), range, user)
+    return {
+        "range": st.range_key, "start": st.start.isoformat(), "end": st.end.isoformat(),
+        "unit": st.unit,
+        "totals": {k: getattr(st, k) for k in (
+            "printed_pages", "print_jobs", "scanned_pages", "scan_jobs", "sheets",
+            "sheets_saved", "duplex_pages", "simplex_pages", "color_pages", "mono_pages",
+            "default_color_pages", "failed_jobs", "cancelled_jobs", "finished_jobs")},
+        "series": st.series, "by_printer": st.by_printer,
+        "by_user": st.by_user if _user(request).is_admin else [], "top_errors": st.top_errors,
+    }
+
+
+@router.get("/supplies")
+async def supplies(request: Request, days: int = 90):
+    return _svc(request).supply_history(min(max(days, 1), 730))
 
 
 # --- jobs ----------------------------------------------------------------------

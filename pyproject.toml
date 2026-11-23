@@ -1,8 +1,10 @@
 [project]
 name = "platen"
-version = "0.2.0"
+version = "0.3.0"
 description = "Self-hosted print & scan manager: CUPS and SANE behind one web UI with a job log."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
 # pycups is not on PyPI as a wheel; the container uses Debian's python3-cups.
 # img2pdf and pillow are also satisfied by Debian packages inside the container.
@@ -25,7 +27,7 @@ dependencies = [
 test = ["pytest>=8"]
 
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

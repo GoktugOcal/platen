@@ -97,6 +97,7 @@ async def _print_page(request: Request, status_code: int = 200, selected: str | 
                       form: dict | None = None, error: str | None = None) -> HTMLResponse:
     s, user = svc(request), current_user(request)
     return render(request, "print.html", status_code=status_code,
+                  quota=s.quota_status(user),
                   printers=await s.list_printers(user), selected=selected,
                   recent=s.list_jobs(user, kind=JobKind.PRINT, limit=5),
                   accept=",".join(s.accepted_upload_types), form=form or {}, error=error)
@@ -305,7 +306,31 @@ async def devices_page(request: Request):
     s = svc(request)
     printers, scanners = await asyncio.gather(s.list_printers(), s.list_scanners())
     return render(request, "devices.html", printers=printers, scanners=scanners,
-                  messages=s.device_messages)
+                  messages=s.device_messages, supplies=s.latest_supplies())
+
+
+# --- statistics ------------------------------------------------------------
+
+@router.get("/stats")
+async def stats_page(request: Request, range: str = "30d", user: str = ""):
+    from ..stats import RANGE_LABELS
+
+    s, viewer = svc(request), current_user(request)
+    st = s.stats(viewer, range, user or None)
+    days = max((st.end - st.start).days + 1, 30)
+    chart_data = {
+        "unit": st.unit,
+        "series": st.series,
+        "supplies": s.supply_history(days) if not user else [],
+    }
+    usernames = [u.username for u in s.db.list_users()] if viewer.is_admin else []
+    quota_rows = []
+    if viewer.is_admin and not user:
+        quota_rows = [(u, s.quota_status(u)) for u in s.db.list_users() if u.quota_pages > 0]
+    return render(request, "stats.html", st=st, range_key=st.range_key,
+                  range_labels=RANGE_LABELS, selected_user=user, usernames=usernames,
+                  chart_data=chart_data, quota_rows=quota_rows,
+                  my_quota=s.quota_status(viewer))
 
 
 @router.post("/devices/refresh")

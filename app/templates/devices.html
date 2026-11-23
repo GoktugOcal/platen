@@ -24,9 +24,11 @@
       <td>{{ "yes" if p.duplex else "no" }}</td>
       <td>{{ "yes" if p.color else "no" }}</td>
       <td>
-        {% for m in p.markers %}
-          {{ m.name }}: {% if m.level >= 0 %}<meter min="0" max="100" value="{{ m.level }}"></meter> {{ m.level }}%{% else %}unknown{% endif %}<br>
+        {% set markers = p.markers or supplies.get(p.name, []) %}
+        {% for m in markers %}
+          {{ m.marker if m.marker is defined else m.name }}: {% if m.level >= 0 %}<meter min="0" max="100" value="{{ m.level }}"></meter> {{ m.level }}%{% else %}unknown{% endif %}<br>
         {% else %}<span class="muted">not reported yet</span>{% endfor %}
+        {% if not p.markers and supplies.get(p.name) %}<small class="muted">as of {{ supplies[p.name][0].sampled_at | localtime }}</small>{% endif %}
       </td>
       <td class="wrap muted"><small>{{ p.uri }}</small></td>
     </tr>

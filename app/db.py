@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Connection, make_url
 from sqlmodel import Session, SQLModel, create_engine, func, select
 
@@ -17,12 +17,30 @@ from .models import (
     Role,
     ScanPage,
     SchemaVersion,
+    SupplySample,
     User,
 )
 
+def _add_columns(conn: Connection, table: str, columns: dict[str, str]) -> None:
+    """ALTER TABLE ... ADD COLUMN for columns that do not exist yet (idempotent)."""
+    existing = {c["name"] for c in inspect(conn).get_columns(table)}
+    for name, ddl in columns.items():
+        if name not in existing:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+
+def _v03_user_quotas(conn: Connection) -> None:
+    _add_columns(conn, "users", {
+        "quota_pages": "INTEGER NOT NULL DEFAULT 0",
+        "quota_period": "VARCHAR NOT NULL DEFAULT 'month'",
+    })
+
+
 # Ordered schema migrations for changes create_all() cannot do (new columns,
 # renames). Index i upgrades version i -> i+1. Tables are created by create_all.
-MIGRATIONS: list[Callable[[Connection], None]] = []
+MIGRATIONS: list[Callable[[Connection], None]] = [
+    _v03_user_quotas,   # 0 -> 1 (v0.3)
+]
 
 
 class Database:
@@ -121,6 +139,23 @@ class Database:
             stmt = stmt.where(Job.user == user)
         with self._session() as s:
             return list(s.exec(stmt))
+
+    def jobs_between(self, start: datetime, end: datetime, user: str | None = None) -> list[Job]:
+        stmt = select(Job).where(Job.created_at >= start, Job.created_at < end)
+        if user:
+            stmt = stmt.where(Job.user == user)
+        with self._session() as s:
+            return list(s.exec(stmt.order_by(Job.created_at)))
+
+    def printed_pages_since(self, user: str, since: datetime,
+                            exclude_job: str | None = None) -> int:
+        """Pages (x copies) a user printed or has in flight since ``since``."""
+        counted = (JobStatus.DONE, JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.PRINTING)
+        stmt = select(Job).where(Job.kind == "print", Job.user == user,
+                                 Job.created_at >= since, Job.status.in_(counted))
+        with self._session() as s:
+            return sum((j.pages or 0) * max(j.copies, 1) for j in s.exec(stmt)
+                       if j.id != exclude_job)
 
     def jobs_with_status(self, *statuses: str) -> list[Job]:
         with self._session() as s:
@@ -227,3 +262,32 @@ class Database:
 
     def update_delivery(self, delivery_id: str, **fields: Any) -> Delivery:
         return self._update(Delivery, delivery_id, fields)
+
+    # --- supply samples -----------------------------------------------------
+
+    def add_supply_samples(self, samples: list[SupplySample]) -> None:
+        if not samples:
+            return
+        with self._write_lock, self._session() as s:
+            s.add_all(samples)
+            s.commit()
+
+    def supply_samples_since(self, since: datetime) -> list[SupplySample]:
+        stmt = (select(SupplySample).where(SupplySample.sampled_at >= since)
+                .order_by(SupplySample.sampled_at))
+        with self._session() as s:
+            return list(s.exec(stmt))
+
+    def latest_supply_samples(self) -> list[SupplySample]:
+        """Most recent sample for each (printer, marker)."""
+        latest = (select(SupplySample.printer, SupplySample.marker,
+                         func.max(SupplySample.sampled_at).label("at"))
+                  .group_by(SupplySample.printer, SupplySample.marker).subquery())
+        stmt = select(SupplySample).join(
+            latest,
+            (SupplySample.printer == latest.c.printer)
+            & (SupplySample.marker == latest.c.marker)
+            & (SupplySample.sampled_at == latest.c.at),
+        ).order_by(SupplySample.printer, SupplySample.marker)
+        with self._session() as s:
+            return list(s.exec(stmt))

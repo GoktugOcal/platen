@@ -15,8 +15,9 @@ router = APIRouter(prefix="/admin", include_in_schema=False)
 
 async def _users_page(request: Request, status_code: int = 200, error: str | None = None,
                       form: dict | None = None):
+    users = request.app.state.users.db.list_users()
     return render(request, "admin_users.html", status_code=status_code,
-                  users=request.app.state.users.db.list_users(),
+                  users=users, quotas={u.id: svc(request).quota_status(u) for u in users},
                   printers=await svc(request).list_printers(), error=error, form=form or {})
 
 
@@ -28,13 +29,14 @@ async def users_page(request: Request):
 
 @router.post("/users")
 async def users_create(request: Request, username: str = Form(""), password: str = Form(""),
-                       role: str = Form(Role.USER), email: str = Form("")):
+                       role: str = Form(Role.USER), email: str = Form(""),
+                       quota_pages: int = Form(0), quota_period: str = Form("month")):
     require_admin(request)
     form = await request.form()
     allowed = ",".join(form.getlist("allowed_printers"))
     try:
         await asyncio.to_thread(request.app.state.users.create, username, password, role, email,
-                                allowed)
+                                allowed, quota_pages, quota_period)
     except UserError as exc:
         return await _users_page(request, exc.status_code, exc.message,
                                  {"username": username, "email": email, "role": role})
@@ -43,8 +45,9 @@ async def users_create(request: Request, username: str = Form(""), password: str
 
 async def _edit_page(request: Request, user_id: int, status_code: int = 200,
                      error: str | None = None, message: str | None = None):
+    target = request.app.state.users.get(user_id)
     return render(request, "admin_user_form.html", status_code=status_code,
-                  target=request.app.state.users.get(user_id),
+                  target=target, quota=svc(request).quota_status(target),
                   printers=await svc(request).list_printers(), error=error, message=message)
 
 
@@ -56,13 +59,15 @@ async def user_edit_page(request: Request, user_id: int):
 
 @router.post("/users/{user_id}")
 async def user_edit(request: Request, user_id: int, role: str = Form(Role.USER),
-                    email: str = Form(""), active: str = Form(""), password: str = Form("")):
+                    email: str = Form(""), active: str = Form(""), password: str = Form(""),
+                    quota_pages: int = Form(0), quota_period: str = Form("month")):
     me = require_admin(request)
     users = request.app.state.users
     form = await request.form()
     try:
         updated = users.update(user_id, role=role, email=email, active=bool(active),
-                               allowed_printers=",".join(form.getlist("allowed_printers")))
+                               allowed_printers=",".join(form.getlist("allowed_printers")),
+                               quota_pages=quota_pages, quota_period=quota_period)
         if password:
             updated = await asyncio.to_thread(users.set_password, user_id, password)
     except UserError as exc:

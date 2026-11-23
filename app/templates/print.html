@@ -4,6 +4,16 @@
 {% block content %}
 <h2>Print a file</h2>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if not quota.unlimited %}
+<p class="quota-box {% if quota.remaining <= 0 %}over{% endif %} viz-root">
+  <meter min="0" max="{{ quota.limit }}" value="{{ quota.used }}" class="quota-meter {% if quota.percent >= 90 %}is-high{% endif %}"></meter>
+  {% if quota.remaining > 0 %}
+  <span>{{ quota.remaining }} of {{ quota.limit }} pages left {{ quota.period_label }}</span>
+  {% else %}
+  <span>Your quota of {{ quota.limit }} pages {{ quota.period_label }} is used up.</span>
+  {% endif %}
+</p>
+{% endif %}
 {% if not printers %}
   <p class="notice">No printers are available to you. Check the <a href="/devices">Devices</a> page{% if not user.is_admin %} or ask an admin{% endif %}.</p>
 {% else %}

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Statistics{% endblock %}
+{% block content %}
+<div class="viz-root">
+<h2>Statistics</h2>
+
+<form method="get" action="/stats" class="toolbar viz-filters">
+  <select name="range" aria-label="Time range" onchange="this.form.submit()">
+    {% for key, label in range_labels.items() %}
+    <option value="{{ key }}" {% if key == range_key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% if user.is_admin %}
+  <select name="user" aria-label="User" onchange="this.form.submit()">
+    <option value="">All users</option>
+    {% for name in usernames %}
+    <option value="{{ name }}" {% if name == selected_user %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <noscript><button type="submit">Apply</button></noscript>
+  <span class="muted">{{ st.start.strftime("%-d %b %Y") }} – {{ st.end.strftime("%-d %b %Y") }}{% if not user.is_admin %} · your own jobs{% endif %}</span>
+</form>
+
+<section class="hero">
+  <div class="hero-value">{{ "{:,}".format(st.printed_pages) }}</div>
+  <div class="hero-label">pages printed{% if selected_user %} by {{ selected_user }}{% endif %}</div>
+  {% if not my_quota.unlimited and (not user.is_admin or selected_user == user.username) %}
+  <div class="quota-line">
+    <meter min="0" max="{{ my_quota.limit }}" value="{{ my_quota.used }}" class="quota-meter {% if my_quota.percent >= 90 %}is-high{% endif %}"></meter>
+    <span>{{ my_quota.used }} of {{ my_quota.limit }} quota pages used {{ my_quota.period_label }}</span>
+  </div>
+  {% endif %}
+</section>
+
+<div class="tiles">
+  <div class="tile"><div class="tile-label">Print jobs</div><div class="tile-value">{{ "{:,}".format(st.print_jobs) }}</div></div>
+  <div class="tile"><div class="tile-label">Pages scanned</div><div class="tile-value">{{ "{:,}".format(st.scanned_pages) }}</div>
+    <div class="tile-sub">{{ st.scan_jobs }} scan job{{ "" if st.scan_jobs == 1 else "s" }}</div></div>
+  <div class="tile"><div class="tile-label">Paper sheets used</div><div class="tile-value">{{ "{:,}".format(st.sheets) }}</div>
+    <div class="tile-sub">{{ "{:,}".format(st.sheets_saved) }} saved by two-sided printing</div></div>
+  <div class="tile"><div class="tile-label">Failed jobs</div><div class="tile-value">{{ st.failed_jobs }}</div>
+    <div class="tile-sub">{% if st.failure_rate is not none %}{{ "%.0f" | format(st.failure_rate * 100) }}% of {{ st.finished_jobs }} finished{% else %}no finished jobs{% endif %}{% if st.cancelled_jobs %} · {{ st.cancelled_jobs }} cancelled{% endif %}</div></div>
+</div>
+{% if st.unknown_page_jobs %}
+<p class="muted small-note">{{ st.unknown_page_jobs }} print job{{ "" if st.unknown_page_jobs == 1 else "s" }} (plain text) did not report a page count and {{ "is" if st.unknown_page_jobs == 1 else "are" }} counted as 0.</p>
+{% endif %}
+
+<figure class="chart-card">
+  <figcaption><strong>Pages per {{ st.unit }}</strong></figcaption>
+  <ul class="legend">
+    <li><span class="key key-line" style="--key: var(--series-1)"></span>Printed</li>
+    <li><span class="key key-line" style="--key: var(--series-2)"></span>Scanned</li>
+  </ul>
+  <div class="line-chart" id="pages-chart" data-chart="pages" role="img"
+       aria-label="Printed and scanned pages per {{ st.unit }}. The table below lists every value."></div>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap"><table class="striped">
+      <thead><tr><th>{{ "Day" if st.unit == "day" else "Month" }}</th><th class="num">Printed</th><th class="num">Scanned</th></tr></thead>
+      <tbody>
+      {% for row in st.series | reverse %}
+        <tr><td>{{ row.date }}</td><td class="num">{{ row.printed }}</td><td class="num">{{ row.scanned }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </details>
+</figure>
+
+{% if st.printed_pages %}
+<div class="grid-2">
+  {% set sides_total = st.duplex_pages + st.simplex_pages %}
+  <figure class="chart-card">
+    <figcaption><strong>Two-sided vs one-sided</strong> <span class="muted">printed pages</span></figcaption>
+    {% set parts = [("Two-sided", st.duplex_pages, "--series-1"), ("One-sided", st.simplex_pages, "--series-2")] %}
+    {% include "_segmented.html" %}
+  </figure>
+  {% if st.color_pages or st.mono_pages %}
+  <figure class="chart-card">
+    <figcaption><strong>Color vs black &amp; white</strong> <span class="muted">printed pages</span></figcaption>
+    {% set sides_total = st.color_pages + st.mono_pages + st.default_color_pages %}
+    {% set parts = [("Color", st.color_pages, "--series-1"), ("Black & white", st.mono_pages, "--series-2"), ("Printer default", st.default_color_pages, "--series-3")] %}
+    {% include "_segmented.html" %}
+  </figure>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if st.by_printer | length > 1 %}
+<figure class="chart-card">
+  <figcaption><strong>Pages by printer</strong></figcaption>
+  {% set rows = st.by_printer %}{% set max_val = rows[0].pages %}
+  <div class="hbars">
+    {% for r in rows %}
+    <div class="hbar-row">
+      <span class="hbar-label">{{ r.name }}</span>
+      <span class="hbar-track"><span class="hbar" tabindex="0" style="width: {{ (100 * r.pages / max_val) if max_val else 0 }}%"
+            data-tip="{{ r.name }}: {{ r.pages }} pages" aria-label="{{ r.name }}: {{ r.pages }} pages"></span>
+        <span class="hbar-value">{{ "{:,}".format(r.pages) }}</span></span>
+    </div>
+    {% endfor %}
+  </div>
+</figure>
+{% endif %}
+
+{% if user.is_admin and not selected_user and st.by_user %}
+<figure class="chart-card">
+  <figcaption><strong>By user</strong></figcaption>
+  <div class="table-wrap"><table class="striped">
+    <thead><tr><th>User</th><th class="num">Pages printed</th><th class="num">Pages scanned</th><th class="num">Jobs</th></tr></thead>
+    <tbody>
+    {% for r in st.by_user %}
+      <tr><td><a href="/stats?range={{ range_key }}&user={{ r.user | urlencode }}">{{ r.user }}</a></td>
+          <td class="num">{{ "{:,}".format(r.printed) }}</td><td class="num">{{ "{:,}".format(r.scanned) }}</td><td class="num">{{ r.jobs }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</figure>
+{% endif %}
+
+{% if quota_rows %}
+<figure class="chart-card">
+  <figcaption><strong>Quotas</strong> <span class="muted">current period</span></figcaption>
+  <div class="table-wrap"><table class="striped">
+    <thead><tr><th>User</th><th>Used</th><th class="num">Pages</th><th>Period</th></tr></thead>
+    <tbody>
+    {% for u, q in quota_rows %}
+      <tr><td>{{ u.username }}</td>
+          <td><meter min="0" max="{{ q.limit }}" value="{{ q.used }}" class="quota-meter {% if q.percent >= 90 %}is-high{% endif %}"></meter> {{ q.percent }}%</td>
+          <td class="num">{{ q.used }} / {{ q.limit }}</td><td>{{ q.period }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</figure>
+{% endif %}
+
+{% if chart_data.supplies %}
+<figure class="chart-card">
+  <figcaption><strong>Toner level</strong> <span class="muted">sampled every few hours</span></figcaption>
+  {% if chart_data.supplies | length > 1 %}
+  <ul class="legend">
+    {% for s in chart_data.supplies %}{% if loop.index <= 8 %}
+    <li><span class="key key-line" style="--key: var(--series-{{ loop.index }})"></span>{{ s.marker }}{% if chart_data.supplies | map(attribute="printer") | unique | list | length > 1 %} · {{ s.printer }}{% endif %}</li>
+    {% endif %}{% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted chart-sub">{{ chart_data.supplies[0].marker }}</p>
+  {% endif %}
+  <div class="line-chart" id="supply-chart" data-chart="supplies" role="img"
+       aria-label="Toner level over time. The table below lists the latest values."></div>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap"><table class="striped">
+      <thead><tr><th>Printer</th><th>Supply</th><th class="num">Latest level</th><th class="num">Samples</th></tr></thead>
+      <tbody>
+      {% for s in chart_data.supplies %}
+        <tr><td>{{ s.printer }}</td><td>{{ s.marker }}</td><td class="num">{{ s.points[-1].level }}%</td><td class="num">{{ s.points | length }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </details>
+</figure>
+{% endif %}
+
+{% if st.top_errors %}
+<figure class="chart-card">
+  <figcaption><strong>Most common errors</strong></figcaption>
+  <div class="table-wrap"><table class="striped">
+    <thead><tr><th>Error</th><th class="num">Jobs</th></tr></thead>
+    <tbody>
+    {% for e in st.top_errors %}<tr><td class="wrap">{{ e.error }}</td><td class="num">{{ e.count }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</figure>
+{% endif %}
+</div>
+
+<script type="application/json" id="chart-data">{{ chart_data | tojson }}</script>
+<script src="/static/charts.js" defer></script>
+{% endblock %}

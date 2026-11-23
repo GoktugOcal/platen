@@ -150,7 +150,8 @@ class UserService:
         return user if user and user.active else None
 
     def create(self, username: str, password: str, role: str = Role.USER, email: str = "",
-               allowed_printers: str = "") -> User:
+               allowed_printers: str = "", quota_pages: int = 0,
+               quota_period: str = "month") -> User:
         username = username.strip().lower()
         if not USERNAME_RE.match(username):
             raise UserError("Username: 2-32 characters, lowercase letters, digits, . _ -")
@@ -159,9 +160,11 @@ class UserService:
         if role not in (Role.ADMIN, Role.USER):
             raise UserError("Invalid role")
         validate_password(password)
+        _validate_quota(quota_pages, quota_period)
         return self.db.add_user(User(
             username=username, password_hash=hash_password(password), role=role,
             email=validate_email(email), allowed_printers=_clean_list(allowed_printers),
+            quota_pages=quota_pages, quota_period=quota_period,
         ))
 
     def get(self, user_id: int) -> User:
@@ -172,7 +175,8 @@ class UserService:
 
     def update(self, user_id: int, *, role: str | None = None, active: bool | None = None,
                email: str | None = None, allowed_printers: str | None = None,
-               paperless_token: str | None = None) -> User:
+               paperless_token: str | None = None, quota_pages: int | None = None,
+               quota_period: str | None = None) -> User:
         user = self.get(user_id)
         fields: dict = {}
         losing_admin = (
@@ -195,6 +199,11 @@ class UserService:
             fields["allowed_printers"] = _clean_list(allowed_printers)
         if paperless_token is not None:
             fields["paperless_token"] = paperless_token.strip()
+        if quota_pages is not None or quota_period is not None:
+            pages = user.quota_pages if quota_pages is None else quota_pages
+            period = quota_period or user.quota_period
+            _validate_quota(pages, period)
+            fields["quota_pages"], fields["quota_period"] = pages, period
         return self.db.update_user(user_id, **fields) if fields else user
 
     def set_password(self, user_id: int, password: str) -> User:
@@ -219,6 +228,13 @@ class UserService:
     def logout_everywhere(self, user_id: int) -> User:
         user = self.get(user_id)
         return self.db.update_user(user_id, session_epoch=user.session_epoch + 1)
+
+
+def _validate_quota(pages: int, period: str) -> None:
+    if not 0 <= pages <= 1_000_000:
+        raise UserError("Quota must be between 0 (unlimited) and 1,000,000 pages")
+    if period not in ("month", "week"):
+        raise UserError("Quota period must be month or week")
 
 
 def _clean_list(value: str) -> str:

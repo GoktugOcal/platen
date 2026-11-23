@@ -4,9 +4,9 @@ A self-hosted print & scan manager. Platen adds a web UI, a job log, and (later)
 statistics and document routing on top of **CUPS** and **SANE**. It does not ship its own
 printer drivers or protocol code.
 
-> **Status: v0.2.** Multiple users, printing and scanning to PDF, scan-to-email,
-> Paperless-ngx upload, printing Office documents (optional), and a job log. OCR and a
-> statistics dashboard are on the roadmap.
+> **Status: v0.3.** Multiple users, printing and scanning to PDF, scan-to-email,
+> Paperless-ngx upload, printing Office documents (optional), a job log, a usage dashboard
+> with toner history, and page quotas. OCR is on the roadmap.
 
 ## What it does
 
@@ -24,6 +24,12 @@ printer drivers or protocol code.
 - **Users**: local accounts with admin and user roles. Users only see their own jobs.
   Admins can limit which printers each user may use. Each user gets a personal API token
   and their own Paperless token, so documents are owned by the right Paperless user.
+- **Statistics**: a built-in dashboard (no Prometheus or Grafana needed). It shows pages
+  printed and scanned over time, paper saved by two-sided printing, colour vs black and
+  white, per printer and per user, the most common errors, and toner level history read
+  directly from the printer. It's also available as JSON at `/api/stats`.
+- **Page quotas**: an optional per-user page limit per week or month. Jobs over the limit
+  are refused (or only flagged, if you choose), and users see what's left on the Print page.
 - **Job log**: every print and scan is a job with user, device, pages, options, status,
   times and any error. The status updates live.
 - **Devices**: printer state, duplex/color support, supply levels (when reported) and the
@@ -64,6 +70,10 @@ All settings are environment variables (see `.env.example`):
 | `PLATEN_PAPERLESS_TOKEN` | *(empty)* | Fallback token for users who have not set their own |
 | `PLATEN_PAPERLESS_WAIT` | `120` | Seconds to wait for Paperless to finish consuming |
 | `PLATEN_GOTENBERG_URL` | *(empty)* | Enables Office documents, e.g. `http://127.0.0.1:3100` |
+| `PLATEN_QUOTA_MODE` | `block` | `block` refuses jobs over a user's quota; `warn` only shows usage |
+| `PLATEN_SUPPLY_SAMPLE_MINUTES` | `360` | How often toner levels are recorded for the dashboard (0 = off) |
+| `PLATEN_TRUSTED_PROXIES` | `127.0.0.1` | Proxies whose `X-Forwarded-*` headers are trusted (see Remote access) |
+| `PLATEN_HOST` | `0.0.0.0` | Address to listen on; `127.0.0.1` when only a local proxy or tunnel should reach it |
 | `PLATEN_DATABASE_URL` | SQLite in `/data` | e.g. `postgresql+psycopg://user:pw@host/db` |
 | `PLATEN_RETENTION_DAYS` | `30` | Days before stored files (uploads, PDFs) are deleted. Job records stay |
 | `PLATEN_MAX_UPLOAD_MB` | `50` | Upload size limit |
@@ -84,6 +94,58 @@ They are usually `ipp/print` and `eSCL`.
 - **API tokens**: create one on the Account page and use `Authorization: Bearer <token>`.
 - There is no external identity provider (OIDC) on purpose: Platen stays light enough for a
   Raspberry Pi. Tailscale identity headers may come later.
+
+## Quotas
+
+An admin sets a quota per user (Users → Edit): pages per week or per month, where 0 means
+unlimited. Printed pages count × copies, including jobs still in progress, so a burst of
+jobs can't go over the limit. In `block` mode a job that would go over is refused with a
+message saying how many pages are left. Plain-text files only report their page count
+after printing, so they count afterwards.
+
+## Remote access
+
+Platen deliberately ships no remote-access component. Use whatever you already run; Platen
+only needs to see the right client address and scheme. Bind it to localhost when
+everything comes in through a local proxy or tunnel (`PLATEN_HOST=127.0.0.1`), and list
+the proxy in `PLATEN_TRUSTED_PROXIES` if it isn't on the same machine. With HTTPS in
+front, the login cookie is automatically marked `Secure`.
+
+Serve Platen on its own hostname or port; a sub-path such as `/platen/` is not supported.
+Allow uploads up to `PLATEN_MAX_UPLOAD_MB` (default 50 MB) in your proxy.
+
+**Tailscale** (on the host):
+```bash
+tailscale serve --bg --https=8443 http://127.0.0.1:8631
+# -> https://<machine>.<tailnet>.ts.net:8443
+```
+
+**Caddy**:
+```
+print.example.com {
+    reverse_proxy 127.0.0.1:8631
+}
+```
+
+**nginx**:
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8631;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 50m;
+}
+```
+
+**Cloudflare Tunnel**: point an ingress rule at `http://localhost:8631`. Consider putting
+Cloudflare Access in front, because Platen's login is then the only thing guarding it on
+the public internet.
+
+**WireGuard / other VPNs**: nothing to configure. Open `http://<lan-ip>:8631` while
+connected.
+
+Whatever you choose, finish `/setup` (create the admin) **before** exposing Platen.
 
 ## Scan-to-email with Gmail
 
@@ -182,12 +244,14 @@ PLATEN_TEST_DATABASE_URL=postgresql+psycopg://user:pw@localhost/platen_test .ven
 
 1. **v0.1 MVP**: single user, scan to PDF, upload to print, job log.
 2. **v0.2**: local multi-user accounts, scan-to-email, Paperless-ngx, Office documents via
-   Gotenberg, optional Postgres. *(this release)*
-3. **v0.3**: built-in statistics dashboard, quotas, Tailscale sidecar.
+   Gotenberg, optional Postgres.
+3. **v0.3**: built-in statistics dashboard with toner history, page quotas, and
+   documented remote access through any proxy, tunnel or VPN. *(this release)*
 4. **Later / optional**: OCR (OCRmyPDF), Prometheus `/metrics`, a separate worker with Redis
    for large installs.
 5. **v1**: native IPP queue over the tailnet, Home Assistant, push-button scanning.
 
 ## License
 
-To be decided (AGPL-3.0 or MIT).
+Copyright 2026 Göktuğ Öcal. Licensed under the [Apache License 2.0](LICENSE).
+Bundled third-party files are listed in [NOTICE](NOTICE).

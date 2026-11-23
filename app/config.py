@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # SANE backends to enable (written to /etc/sane.d/dll.conf in the container).
     sane_backends: str = "airscan"
 
+    # Page quotas: "block" refuses jobs over a user's quota, "warn" only shows it.
+    quota_mode: str = "block"
+    # Minutes between toner/supply level samples (for the dashboard history). 0 = off.
+    supply_sample_minutes: int = 360
+
     retention_days: int = 30
     max_upload_mb: int = 50
     max_concurrent_jobs: int = 4

@@ -55,6 +55,17 @@ async def _cleanup_loop(services: Services) -> None:
         await asyncio.sleep(CLEANUP_INTERVAL)
 
 
+async def _supply_loop(services: Services, minutes: int) -> None:
+    await asyncio.sleep(20)  # let printer queues come up first
+    while True:
+        try:
+            count = await services.sample_supplies()
+            log.info("recorded %d supply level samples", count)
+        except Exception:  # noqa: BLE001
+            log.exception("supply sampling failed")
+        await asyncio.sleep(minutes * 60)
+
+
 async def _initial_sync(services: Services) -> None:
     try:
         messages = await services.sync_printers()
@@ -97,6 +108,9 @@ def create_app(
             asyncio.create_task(_initial_sync(services)),
             asyncio.create_task(_cleanup_loop(services)),
         ]
+        if settings.supply_sample_minutes > 0 and settings.backend != "fake":
+            background.append(asyncio.create_task(
+                _supply_loop(services, settings.supply_sample_minutes)))
         if users.needs_setup:
             log.warning("no users yet: open the web UI and create the first admin at /setup")
         try:

@@ -1,0 +1,16 @@
+{# Tall segmented bar: one whole split into parts. Expects `parts` [(label, value, css var)] and `sides_total`. #}
+<div class="segbar" role="group" aria-label="{% for label, value, _ in parts if value %}{{ label }} {{ value }}{% if not loop.last %}, {% endif %}{% endfor %}">
+  {% for label, value, var in parts if value %}
+  {% set share = (100 * value / sides_total) if sides_total else 0 %}
+  <span class="seg" tabindex="0" style="flex-grow: {{ value }}; background: var({{ var }})"
+        data-tip="{{ label }}: {{ "{:,}".format(value) }} pages ({{ "%.0f" | format(share) }}%)"
+        aria-label="{{ label }}: {{ value }} pages, {{ "%.0f" | format(share) }}%">
+    {% if share >= 12 %}<span class="seg-label">{{ "%.0f" | format(share) }}%</span>{% endif %}
+  </span>
+  {% endfor %}
+</div>
+<ul class="legend">
+  {% for label, value, var in parts if value %}
+  <li><span class="key key-rect" style="--key: var({{ var }})"></span>{{ label }} <span class="muted">{{ "{:,}".format(value) }}</span></li>
+  {% endfor %}
+</ul>

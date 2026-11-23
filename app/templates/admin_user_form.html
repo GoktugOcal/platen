@@ -17,6 +17,18 @@
       <input type="password" name="password" minlength="8" autocomplete="new-password">
     </label>
   </div>
+  <div class="grid-2">
+    <label>Page quota <span class="muted">(0 = unlimited)</span>
+      <input type="number" name="quota_pages" min="0" value="{{ target.quota_pages }}">
+    </label>
+    <label>Quota period
+      <select name="quota_period">
+        <option value="month" {% if target.quota_period == "month" %}selected{% endif %}>Per month</option>
+        <option value="week" {% if target.quota_period == "week" %}selected{% endif %}>Per week</option>
+      </select>
+    </label>
+  </div>
+  {% if not quota.unlimited %}<p class="muted">Used {{ quota.used }} of {{ quota.limit }} pages {{ quota.period_label }}.</p>{% endif %}
   <label><input type="checkbox" name="active" value="1" {% if target.active %}checked{% endif %}> Active (can log in)</label>
   {% if printers %}
   <fieldset>

@@ -11,11 +11,12 @@ import logging
 import shutil
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import timedelta, timezone
 from pathlib import Path
 
 from fastapi import UploadFile
 
+from . import quotas
 from .config import Settings
 from .db import Database
 from .delivery import PaperlessClient, PaperlessError
@@ -43,6 +44,7 @@ from .models import (
     new_id,
     utcnow,
 )
+from .models import SupplySample
 from .pdf import (
     ALL_OFFICE_EXTENSIONS,
     EXTENSIONS,
@@ -255,6 +257,10 @@ class Services:
         page_range: str = "",
     ) -> Job:
         info = await self.get_printer(printer, user)
+        try:
+            quotas.check(self.db, user, 1, self.settings.quota_mode)
+        except quotas.QuotaExceeded as exc:
+            raise ServiceError(str(exc), 403) from exc
         if not 1 <= copies <= 99:
             raise ServiceError("Copies must be between 1 and 99")
         if duplex not in DUPLEX_OPTIONS:
@@ -405,6 +411,46 @@ class Services:
         job = self.db.update_job(job_id, status=JobStatus.QUEUED)
         self.runner.submit(job.id)
         return job
+
+    # --- statistics and supplies --------------------------------------------
+
+    def stats(self, viewer: User, range_key: str, user_filter: str | None = None):
+        """Dashboard statistics. Regular users only ever see their own numbers."""
+        from . import stats
+
+        key, start, end = stats.resolve_range(range_key)
+        owner = user_filter if viewer.is_admin else viewer.username
+        jobs = self.db.jobs_between(start.astimezone(timezone.utc),
+                                    end.astimezone(timezone.utc), owner or None)
+        return stats.compute(jobs, key, start, end)
+
+    def supply_history(self, days: int = 90) -> list[dict]:
+        from . import stats
+
+        return stats.supply_history(self.db.supply_samples_since(utcnow() - timedelta(days=days)))
+
+    def latest_supplies(self) -> dict[str, list[SupplySample]]:
+        out: dict[str, list[SupplySample]] = {}
+        for sample in self.db.latest_supply_samples():
+            out.setdefault(sample.printer, []).append(sample)
+        return out
+
+    async def sample_supplies(self) -> int:
+        """Record the current toner/ink level of every printer."""
+        rows = []
+        for printer in await self.list_printers():
+            try:
+                markers = await asyncio.to_thread(self.printers.supply_levels, printer.name)
+            except Exception as exc:  # noqa: BLE001 - a missing printer is not fatal
+                log.info("supply levels for %s unavailable: %s", printer.name, exc)
+                continue
+            rows += [SupplySample(printer=printer.name, marker=m.name, color=m.color,
+                                  level=m.level) for m in markers]
+        await asyncio.to_thread(self.db.add_supply_samples, rows)
+        return len(rows)
+
+    def quota_status(self, user: User) -> quotas.QuotaStatus:
+        return quotas.status(self.db, user)
 
     # --- deliveries ---------------------------------------------------------
 

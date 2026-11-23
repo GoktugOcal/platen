@@ -5,7 +5,7 @@
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <div class="table-wrap">
 <table class="striped">
-  <thead><tr><th>Username</th><th>Role</th><th>Email</th><th>Printers</th><th>Status</th><th>Last login</th><th></th></tr></thead>
+  <thead><tr><th>Username</th><th>Role</th><th>Email</th><th>Printers</th><th>Quota</th><th>Status</th><th>Last login</th><th></th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr>
@@ -13,6 +13,7 @@
       <td>{{ u.role }}</td>
       <td>{{ u.email }}</td>
       <td class="wrap">{{ u.printer_list | join(", ") if u.printer_list else "all" }}</td>
+      <td>{% set q = quotas[u.id] %}{% if q.unlimited %}<span class="muted">none</span>{% else %}{{ q.used }} / {{ q.limit }} per {{ q.period }}{% endif %}</td>
       <td>{{ "active" if u.active else "disabled" }}</td>
       <td>{{ u.last_login_at | localtime }}</td>
       <td><a href="/admin/users/{{ u.id }}">Edit</a></td>
@@ -34,6 +35,14 @@
           <option value="user" {% if form.role != "admin" %}selected{% endif %}>User</option>
           <option value="admin" {% if form.role == "admin" %}selected{% endif %}>Admin</option>
         </select>
+      </label>
+    </div>
+    <div class="grid-2">
+      <label>Page quota <span class="muted">(0 = unlimited)</span>
+        <input type="number" name="quota_pages" min="0" value="{{ form.quota_pages or 0 }}">
+      </label>
+      <label>Quota period
+        <select name="quota_period"><option value="month">Per month</option><option value="week">Per week</option></select>
       </label>
     </div>
     {% if printers | length > 1 %}

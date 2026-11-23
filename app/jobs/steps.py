@@ -17,6 +17,7 @@ from ..convert import convert_office
 from ..delivery import EmailError, PaperlessClient, PaperlessError, send_pdf
 from ..devices import PrinterError
 from ..models import Delivery, DeliveryKind, DeliveryStatus, JobStatus, utcnow
+from .. import quotas
 from ..pdf import build_pdf, count_pages, detect_office, detect_type, page_range_count
 from .runner import JobCancelled, JobContext
 
@@ -50,6 +51,15 @@ async def count_print_pages(ctx: JobContext) -> None:
     total = await asyncio.to_thread(count_pages, path, file_type or "")
     pages = page_range_count(job.page_range, total) if total else None
     ctx.update(pages=pages)
+    # Quota check now that the real page count is known (text files: counted after).
+    user = ctx.db.get_user_by_name(job.user)
+    if user is not None and pages:
+        try:
+            quotas.check(ctx.db, user, pages * max(job.copies, 1), ctx.settings.quota_mode,
+                         exclude_job=job.id)
+        except quotas.QuotaExceeded as exc:
+            ctx.update(pages=None)  # nothing was printed; keep it out of the totals
+            raise exc
 
 
 async def submit_print(ctx: JobContext) -> None:

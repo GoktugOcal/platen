@@ -57,6 +57,18 @@ class PrinterBackend(Protocol):
     def submit(self, printer: str, path: Path, title: str, options: dict[str, str]) -> int: ...
     def job_state(self, job_id: int) -> CupsJobState: ...
     def cancel(self, job_id: int) -> None: ...
+    def supply_levels(self, name: str) -> list[Marker]: ...
+
+
+MARKER_ATTRIBUTES = ["marker-names", "marker-levels", "marker-colors"]
+
+
+def markers_from_attrs(attrs: dict) -> list[Marker]:
+    names = _as_list(attrs.get("marker-names"))
+    levels = _as_list(attrs.get("marker-levels"))
+    colors = _as_list(attrs.get("marker-colors"))
+    return [Marker(n, int(lv), colors[i] if i < len(colors) else "")
+            for i, (n, lv) in enumerate(zip(names, levels))]
 
 
 def queue_name(label: str) -> str:
@@ -152,13 +164,7 @@ class CupsPrinterBackend:
                 info.color = bool(attrs.get("color-supported")) or "color" in _as_list(
                     attrs.get("print-color-mode-supported")
                 )
-                names = _as_list(attrs.get("marker-names"))
-                levels = _as_list(attrs.get("marker-levels"))
-                colors = _as_list(attrs.get("marker-colors"))
-                info.markers = [
-                    Marker(n, int(lv), colors[i] if i < len(colors) else "")
-                    for i, (n, lv) in enumerate(zip(names, levels))
-                ]
+                info.markers = markers_from_attrs(attrs)
                 result.append(info)
             return result
 
@@ -213,6 +219,37 @@ class CupsPrinterBackend:
             reasons=_as_list(a.get("job-state-reasons")),
             impressions=int(impressions) if impressions else None,
         )
+
+    def supply_levels(self, name: str) -> list[Marker]:
+        """Toner/ink levels. Driverless CUPS queues often do not report them, so
+        ask the printer itself over IPP when the queue has an ipp(s):// URI."""
+        import cups
+
+        with self._lock:
+            conn = self._conn()
+            attrs = conn.getPrinters().get(name)
+            if attrs is None:
+                return []
+            uri = attrs.get("device-uri", "")
+            try:
+                markers = markers_from_attrs(conn.getPrinterAttributes(
+                    name, requested_attributes=MARKER_ATTRIBUTES))
+            except cups.IPPError:
+                markers = []
+        parsed = urlparse(uri)
+        if markers or parsed.scheme not in ("ipp", "ipps") or not parsed.hostname:
+            return markers
+        try:
+            kwargs = {"host": parsed.hostname, "port": parsed.port or 631}
+            if parsed.scheme == "ipps":
+                kwargs["encryption"] = cups.HTTP_ENCRYPT_ALWAYS
+            with self._lock:
+                direct = cups.Connection(**kwargs)
+                return markers_from_attrs(direct.getPrinterAttributes(
+                    uri=uri, requested_attributes=MARKER_ATTRIBUTES))
+        except (cups.IPPError, RuntimeError, OSError) as exc:
+            log.info("could not read supplies from %s: %s", uri, exc)
+            return []
 
     def cancel(self, job_id: int) -> None:
         import cups
@@ -274,6 +311,10 @@ class FakePrinterBackend:
             return CupsJobState(job["state"], reasons)
         job["state"] = "processing"
         return CupsJobState("processing", ["job-printing"])
+
+    def supply_levels(self, name: str) -> list[Marker]:
+        info = self.printers.get(name)
+        return list(info.markers) if info else []
 
     def cancel(self, job_id: int) -> None:
         if job_id in self.jobs:

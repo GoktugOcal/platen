@@ -85,6 +85,8 @@ class User(SQLModel, table=True):
     allowed_printers: str = ""        # comma-separated CUPS queue names; empty = all
     api_token_hash: str = Field(default="", index=True)
     session_epoch: int = 0            # bump to invalidate existing sessions
+    quota_pages: int = 0              # printed pages per period; 0 = unlimited
+    quota_period: str = "month"       # month | week
     active: bool = True
     created_at: datetime = Field(default_factory=utcnow)
     last_login_at: datetime | None = None
@@ -127,6 +129,19 @@ class Delivery(SQLModel, table=True):
     attempts: int = 0
     created_at: datetime = Field(default_factory=utcnow)
     finished_at: datetime | None = None
+
+
+class SupplySample(SQLModel, table=True):
+    """Toner/ink level of one printer marker at one point in time."""
+
+    __tablename__ = "supply_sample"
+
+    id: int | None = Field(default=None, primary_key=True)
+    printer: str = Field(index=True)
+    marker: str
+    color: str = ""
+    level: int                        # percent; negative = unknown
+    sampled_at: datetime = Field(default_factory=utcnow, index=True)
 
 
 class SchemaVersion(SQLModel, table=True):
