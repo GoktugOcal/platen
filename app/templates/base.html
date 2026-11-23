@@ -5,15 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}Platen{% endblock %} · Platen</title>
-  <script>
-    // Apply saved theme and sidebar state before first paint (no flash).
-    (function () {
-      var t = localStorage.getItem("platen-theme");
-      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-      if (localStorage.getItem("platen-sidebar") === "collapsed" && !matchMedia("(max-width: 860px)").matches)
-        document.documentElement.setAttribute("data-sidebar", "collapsed");
-    })();
-  </script>
+  <script src="/static/boot.js?v={{ app_version }}"></script>
   <link rel="stylesheet" href="/static/app.css?v={{ app_version }}">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js?v={{ app_version }}" defer></script>

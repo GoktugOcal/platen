@@ -89,6 +89,13 @@ class Settings(BaseSettings):
 
     retention_days: int = 30
     max_upload_mb: int = 50
+
+    # Abuse protection (0 turns a limit off). Counted per logged-in user, else per IP.
+    rate_limit_per_minute: int = 600          # all requests
+    heavy_rate_limit_per_minute: int = 30     # uploads, scans, retries, device searches
+    # Extra origins allowed to send forms/API writes with a browser, comma-separated,
+    # e.g. "https://home.example.com". Same-origin requests never need this.
+    trusted_origins: str = ""
     max_concurrent_jobs: int = 4
     # Seconds between CUPS job status polls.
     poll_interval: float = 2.0
@@ -104,6 +111,11 @@ class Settings(BaseSettings):
     @property
     def email_enabled(self) -> bool:
         return bool(self.smtp_host)
+
+    @property
+    def trusted_origin_set(self) -> frozenset[str]:
+        return frozenset(o.strip().rstrip("/").lower()
+                         for o in self.trusted_origins.split(",") if o.strip())
 
     @property
     def paperless_enabled(self) -> bool:

@@ -19,6 +19,7 @@ def make_settings(tmp_path, **overrides) -> Settings:
         data_dir=tmp_path, backend="fake", poll_interval=0.01, discover_printers=False,
         password=ADMIN_PASSWORD, sane_config_dir=tmp_path / "no-sane",
         libreoffice="",  # tests opt in to Office conversion explicitly
+        rate_limit_per_minute=0, heavy_rate_limit_per_minute=0,  # tests poll quickly
         # Run the suite against Postgres with PLATEN_TEST_DATABASE_URL=postgresql+psycopg://...
         database_url=os.environ.get("PLATEN_TEST_DATABASE_URL", ""),
     )

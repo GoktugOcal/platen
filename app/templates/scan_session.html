@@ -7,7 +7,7 @@
     <p>{{ job.dpi }} DPI · {{ job.color_mode }} · Put a page on the glass and press <em>Scan page</em>. Repeat for each page, then finish.</p>
   </div>
   <div class="page-actions">
-    <form method="post" action="/scan/{{ job.id }}/discard" onsubmit="return confirm('Discard all scanned pages?')">
+    <form method="post" action="/scan/{{ job.id }}/discard" data-confirm="Discard all scanned pages?">
       <button type="submit" class="outline">{{ icon("trash-2") }}Discard</button>
     </form>
   </div>
@@ -31,7 +31,7 @@
         {% if features.email %}
         <label>
           <input type="checkbox" name="deliver_email" value="1" {% if default_email %}checked{% endif %}
-                 onchange="document.getElementById('email-field').hidden = !this.checked">
+                 data-reveals="email-field">
           {{ icon("mail") }}Email
         </label>
         <div id="email-field" {% if not default_email %}hidden{% endif %}>
@@ -43,7 +43,7 @@
         {% if features.paperless %}
         <label>
           <input type="checkbox" name="deliver_paperless" value="1" {% if not paperless_ready %}disabled{% endif %}
-                 onchange="document.getElementById('paperless-box').hidden = !this.checked">
+                 data-reveals="paperless-box">
           {{ icon("archive") }}Paperless-ngx
         </label>
         {% if not paperless_ready %}<p class="muted small">Add your API token on the <a href="/account">Account</a> page to enable this.</p>{% endif %}

@@ -51,4 +51,31 @@
   });
 
   setTheme(currentTheme());
+
+  // Small behaviours declared in the templates with data attributes, so the
+  // Content-Security-Policy can forbid inline scripts and event handlers.
+  document.addEventListener("change", (e) => {
+    const el = e.target;
+    if (el.matches("select[data-autosubmit]")) el.form.submit();
+    else if (el.matches("select[data-navigate]")) {
+      window.location = el.dataset.navigate + encodeURIComponent(el.value);
+    } else if (el.matches("input[data-reveals]")) {
+      const target = document.getElementById(el.dataset.reveals);
+      if (target) target.hidden = !el.checked;
+    }
+  });
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
+      e.preventDefault();
+      return;
+    }
+    form.querySelectorAll("[data-busy]").forEach((b) => b.setAttribute("aria-busy", "true"));
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("a[data-back]") && window.history.length > 1) {
+      e.preventDefault();
+      window.history.back();
+    }
+  });
 })();

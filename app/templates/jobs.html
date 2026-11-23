@@ -12,12 +12,12 @@
 <section class="card flush">
   <div class="card-header">
     <form method="get" action="/jobs" class="toolbar">
-      <select name="kind" aria-label="Type" onchange="this.form.submit()">
+      <select name="kind" aria-label="Type" data-autosubmit>
         <option value="">All types</option>
         <option value="print" {% if kind == "print" %}selected{% endif %}>Print</option>
         <option value="scan" {% if kind == "scan" %}selected{% endif %}>Scan</option>
       </select>
-      <select name="status" aria-label="Status" onchange="this.form.submit()">
+      <select name="status" aria-label="Status" data-autosubmit>
         <option value="">All statuses</option>
         {% for s in statuses %}
         <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>

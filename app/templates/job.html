@@ -16,7 +16,7 @@
         <a href="/jobs/{{ job.id }}/file" role="button" download>{{ icon("download") }}Download PDF</a>
       {% endif %}
       {% if active %}
-      <form method="post" action="/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Cancel this job?')">
+      <form method="post" action="/jobs/{{ job.id }}/cancel" data-confirm="Cancel this job?">
         <button type="submit" class="outline">{{ icon("x") }}Cancel job</button>
       </form>
       {% endif %}

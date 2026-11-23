@@ -30,7 +30,7 @@
     <p class="card-description">200 DPI is enough for documents. Use 300 DPI or higher for photos or small print.</p></div></div>
   <form method="post" action="/scan">
     <label>Scanner
-      <select name="device" onchange="location='/scan?device='+encodeURIComponent(this.value)">
+      <select name="device" data-navigate="/scan?device=">
         {% for s in scanners %}
         <option value="{{ s.id }}" {% if selected and s.id == selected.id %}selected{% endif %}>{{ s.label }}</option>
         {% endfor %}

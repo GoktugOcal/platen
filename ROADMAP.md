@@ -31,11 +31,12 @@ Goal: easy to install and trust.
 
 | Item | Effort | Notes |
 |---|---|---|
-| shadcn-style UI with left sidebar and light/dark theme | done | uncommitted |
-| Own mDNS discovery (zeroconf), works under AppArmor | done | uncommitted |
-| Public GitHub repo, CI (tests on amd64 and arm64), multi-arch image on GHCR | M | approved; CI workflow written |
+| shadcn-style UI with left sidebar and light/dark theme | done | |
+| Own mDNS discovery (zeroconf), works under AppArmor | done | |
+| Public GitHub repo, CI (tests on amd64 and arm64), multi-arch image on GHCR | done | standard and `-office` images |
+| Office printing with LibreOffice bundled in Platen (`-office` image), replaces the Gotenberg sidecar | done | |
 | Releases + CHANGELOG, screenshots in README, `compose.demo.yaml` (simulated devices) | S | |
-| Security hardening: CSRF tokens on forms, rate limits on API and uploads, security headers (CSP, frame-ancestors) | M | rPrint already has CSRF and rate limiting |
+| Security hardening: cross-site request blocking (Fetch Metadata / Origin), rate limits, early upload size check, strict CSP and security headers | done | |
 | `.env` cleanup on the Pi (rely on discovery) | done | |
 
 ## v0.5: Scanning depth

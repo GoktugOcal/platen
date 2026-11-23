@@ -10,13 +10,13 @@
 </div>
 
 <form method="get" action="/stats" class="toolbar viz-filters">
-  <select name="range" aria-label="Time range" onchange="this.form.submit()">
+  <select name="range" aria-label="Time range" data-autosubmit>
     {% for key, label in range_labels.items() %}
     <option value="{{ key }}" {% if key == range_key %}selected{% endif %}>{{ label }}</option>
     {% endfor %}
   </select>
   {% if user.is_admin %}
-  <select name="user" aria-label="User" onchange="this.form.submit()">
+  <select name="user" aria-label="User" data-autosubmit>
     <option value="">All users</option>
     {% for name in usernames %}
     <option value="{{ name }}" {% if name == selected_user %}selected{% endif %}>{{ name }}</option>

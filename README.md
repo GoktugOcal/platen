@@ -88,6 +88,9 @@ All settings are environment variables (see `.env.example`):
 | `PLATEN_DATABASE_URL` | SQLite in `/data` | e.g. `postgresql+psycopg://user:pw@host/db` |
 | `PLATEN_RETENTION_DAYS` | `30` | Days before stored files (uploads, PDFs) are deleted. Job records stay |
 | `PLATEN_MAX_UPLOAD_MB` | `50` | Upload size limit |
+| `PLATEN_RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute per user (per IP before login); 0 = off |
+| `PLATEN_HEAVY_RATE_LIMIT_PER_MINUTE` | `30` | Uploads, scans, retries and device searches per minute per user; 0 = off |
+| `PLATEN_TRUSTED_ORIGINS` | *(empty)* | Extra browser origins allowed to submit forms (rarely needed, see Security) |
 | `PLATEN_SECRET_KEY` | *(generated)* | Cookie signing key. Generated into `/data/secret_key` if unset |
 | `CUPS_SERVER` | *(bundled)* | Use an external CUPS (e.g. `localhost:631`) instead of the bundled one |
 | `TZ` | `UTC` | Timezone for timestamps in the UI |
@@ -105,6 +108,23 @@ They are usually `ipp/print` and `eSCL`.
 - **API tokens**: create one on the Account page and use `Authorization: Bearer <token>`.
 - There is no external identity provider (OIDC) on purpose: Platen stays light enough for a
   Raspberry Pi. Tailscale identity headers may come later.
+
+## Security
+
+- **Cross-site requests are blocked.** A form or API write coming from another website is
+  refused, so a malicious page can't print, cancel jobs or log you in/out through your
+  browser. Platen checks the browser's `Sec-Fetch-Site` header (and `Origin` for older
+  browsers) instead of hidden form tokens. Scripts and `curl` with an API token are not
+  affected. If an old browser behind a proxy that rewrites the `Host` header gets
+  "Cross-site request blocked", add your public address to `PLATEN_TRUSTED_ORIGINS`
+  (e.g. `https://print.example.com`).
+- **Strict Content-Security-Policy**: pages only run Platen's own scripts (no inline code)
+  and cannot be embedded in other sites. Plus `nosniff`, `Referrer-Policy: same-origin` and
+  a restrictive `Permissions-Policy`.
+- **Rate limits** per user (or per IP before login), and oversized uploads are refused from
+  the `Content-Length` header before anything is read. Limits are in memory, so they reset on
+  restart.
+- HSTS is left to your HTTPS proxy.
 
 ## Quotas
 

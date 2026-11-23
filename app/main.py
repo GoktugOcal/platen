@@ -25,6 +25,7 @@ from .devices import (
 )
 from .jobs import PIPELINES, RESUME_PRINT, JobRunner
 from .routes import account, admin, api, ui
+from .security import RateLimitMiddleware, SecurityMiddleware
 from .services import ServiceError, Services
 from .users import LoginThrottle, UserError, UserService
 
@@ -148,7 +149,14 @@ def create_app(
     app.state.settings = settings
     app.state.sessions = sessions
     app.state.login_throttle = LoginThrottle()
+    # Starlette runs the last-added middleware first: Security -> Auth -> RateLimit -> app.
+    app.add_middleware(RateLimitMiddleware,
+                       requests_per_minute=settings.rate_limit_per_minute,
+                       heavy_per_minute=settings.heavy_rate_limit_per_minute)
     app.add_middleware(AuthMiddleware)
+    app.add_middleware(SecurityMiddleware,
+                       max_body_bytes=(settings.max_upload_mb + 1) * 1024 * 1024,
+                       trusted_origins=settings.trusted_origin_set)
     app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
     app.include_router(api.router)
     app.include_router(account.router)
