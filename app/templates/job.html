@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status %}
+{% block title %}Job {{ job.id }}{% endblock %}
+{% block content %}
+{% set active = job.status in ACTIVE_STATUSES and job.status != "open" %}
+<section id="job-status"
+         {% if active %}hx-get="/jobs/{{ job.id }}" hx-trigger="every 2s" hx-select="#job-status" hx-swap="outerHTML"{% endif %}>
+  <h2>{{ "Print" if job.kind == "print" else "Scan" }} job {{ status(job.status) }}</h2>
+  {% if job.error %}<p class="error" role="alert">{{ job.error }}</p>{% endif %}
+
+  {% if job.status == "done" and job.kind == "scan" and not job.files_purged %}
+    <p><a href="/jobs/{{ job.id }}/file" role="button" download>Download PDF</a></p>
+  {% elif active %}
+    <p aria-busy="true">{{ "Printing…" if job.kind == "print" else "Building the PDF…" }}</p>
+  {% endif %}
+
+  <table>
+    <tbody>
+      <tr><th>Device</th><td>{{ job.device_label or job.device }}</td></tr>
+      {% if job.filename %}<tr><th>File</th><td>{{ job.filename }}{% if job.file_size %} <span class="muted">({{ job.file_size | filesize }})</span>{% endif %}</td></tr>{% endif %}
+      <tr><th>Pages</th><td>{{ job.pages if job.pages is not none else "unknown" }}</td></tr>
+      {% if job.kind == "print" %}
+      <tr><th>Copies</th><td>{{ job.copies }}</td></tr>
+      <tr><th>Sides</th><td>{{ DUPLEX_OPTIONS.get(job.duplex, "") }}</td></tr>
+      <tr><th>Color</th><td>{{ COLOR_OPTIONS.get(job.color_mode or "", job.color_mode) }}</td></tr>
+      {% if job.page_range %}<tr><th>Page range</th><td>{{ job.page_range }}</td></tr>{% endif %}
+      {% if job.cups_job_id %}<tr><th>CUPS job</th><td>{{ job.cups_job_id }}</td></tr>{% endif %}
+      {% else %}
+      <tr><th>Resolution</th><td>{{ job.dpi }} DPI</td></tr>
+      <tr><th>Mode</th><td>{{ job.color_mode }}</td></tr>
+      {% endif %}
+      <tr><th>User</th><td>{{ job.user }}</td></tr>
+      <tr><th>Created</th><td>{{ job.created_at | localtime }}</td></tr>
+      {% if job.started_at %}<tr><th>Started</th><td>{{ job.started_at | localtime }}</td></tr>{% endif %}
+      {% if job.finished_at %}<tr><th>Finished</th><td>{{ job.finished_at | localtime }}</td></tr>{% endif %}
+      {% if job.files_purged %}<tr><th>Files</th><td class="muted">deleted after the retention period</td></tr>{% endif %}
+    </tbody>
+  </table>
+
+  {% if active %}
+  <form method="post" action="/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Cancel this job?')">
+    <button type="submit" class="secondary outline">Cancel job</button>
+  </form>
+  {% endif %}
+</section>
+<p><a href="/jobs">← All jobs</a></p>
+{% endblock %}

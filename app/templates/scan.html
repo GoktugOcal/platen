@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Scan{% endblock %}
+{% block content %}
+<h2>Scan</h2>
+
+{% if sessions %}
+<article>
+  <strong>Unfinished scans</strong>
+  <ul>
+    {% for s in sessions %}
+    <li><a href="/scan/{{ s.id }}">{{ s.device_label }} · started {{ s.created_at | localtime }}</a></li>
+    {% endfor %}
+  </ul>
+</article>
+{% endif %}
+
+{% if not scanners %}
+  <p class="notice">No scanners found. Make sure the scanner is on and on the same network,
+    then <a href="/scan?refresh=1">search again</a>.</p>
+{% else %}
+<form method="post" action="/scan">
+  <div class="grid-2">
+    <label>Scanner
+      <select name="device" onchange="location='/scan?device='+encodeURIComponent(this.value)">
+        {% for s in scanners %}
+        <option value="{{ s.id }}" {% if selected and s.id == selected.id %}selected{% endif %}>{{ s.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if caps %}
+    <label>Resolution
+      <select name="dpi">
+        {% for dpi in caps.resolutions %}
+        <option value="{{ dpi }}" {% if dpi == caps.default_resolution() %}selected{% endif %}>{{ dpi }} DPI</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Mode
+      <select name="mode">
+        {% for mode in caps.modes %}
+        <option value="{{ mode }}" {% if mode == caps.default_mode() %}selected{% endif %}>{{ mode }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+  </div>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <p class="muted">200 DPI is enough for documents. Use 300 DPI or higher for photos or small print.</p>
+  <button type="submit" {% if not caps %}disabled{% endif %}>Start scanning</button>
+  <a href="/scan?refresh=1{% if selected %}&device={{ selected.id | urlencode }}{% endif %}" class="secondary">Search for scanners again</a>
+</form>
+{% endif %}
+{% endblock %}

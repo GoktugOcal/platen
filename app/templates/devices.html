@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Devices{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h2>Devices</h2>
+  <form method="post" action="/devices/refresh" class="inline">
+    <button class="outline small" type="submit" onclick="this.setAttribute('aria-busy','true')">Search again</button>
+  </form>
+</div>
+{% for msg in messages %}<p class="error">{{ msg }}</p>{% endfor %}
+
+<h3>Printers</h3>
+{% if printers %}
+<div class="table-wrap">
+<table class="striped">
+  <thead><tr><th>Name</th><th>State</th><th>Duplex</th><th>Color</th><th>Supplies</th><th>Address</th></tr></thead>
+  <tbody>
+  {% for p in printers %}
+    <tr>
+      <td><strong>{{ p.label }}</strong><br><span class="muted">{{ p.make_model }}</span></td>
+      <td>{{ p.state }}{% if not p.accepting %} (not accepting){% endif %}{% if p.state_message %}<br><span class="muted">{{ p.state_message }}</span>{% endif %}</td>
+      <td>{{ "yes" if p.duplex else "no" }}</td>
+      <td>{{ "yes" if p.color else "no" }}</td>
+      <td>
+        {% for m in p.markers %}
+          {{ m.name }}: {% if m.level >= 0 %}<meter min="0" max="100" value="{{ m.level }}"></meter> {{ m.level }}%{% else %}unknown{% endif %}<br>
+        {% else %}<span class="muted">not reported yet</span>{% endfor %}
+      </td>
+      <td class="wrap muted"><small>{{ p.uri }}</small></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No printers yet. Set <code>PLATEN_PRINTERS</code> or make sure the printer supports IPP Everywhere / AirPrint and is on the same network.</p>
+{% endif %}
+
+<h3>Scanners</h3>
+{% if scanners %}
+<table class="striped">
+  <thead><tr><th>Name</th><th>SANE device</th></tr></thead>
+  <tbody>
+  {% for s in scanners %}
+    <tr><td><strong>{{ s.label }}</strong></td><td class="muted"><small>{{ s.id }}</small></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No scanners found. Set <code>PLATEN_SCANNERS</code> (e.g. <code>MyScanner=http://192.168.1.50:8080/eSCL</code>) if discovery does not work.</p>
+{% endif %}
+{% endblock %}

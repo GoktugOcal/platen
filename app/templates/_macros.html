@@ -1,0 +1,36 @@
+{% macro status(value) -%}
+<span class="status status-{{ value }}">{{ value }}</span>
+{%- endmacro %}
+
+{% macro jobs_table(jobs) -%}
+<div class="table-wrap">
+<table class="striped">
+  <thead>
+    <tr><th>Created</th><th>Type</th><th>Device</th><th>File</th><th>Pages</th>
+        <th>Options</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td>{{ job.created_at | localtime }}</td>
+      <td>{{ job.kind }}</td>
+      <td>{{ job.device_label or job.device }}</td>
+      <td class="wrap">{{ job.filename or "" }}</td>
+      <td>{{ job.pages if job.pages is not none else "" }}{% if job.kind == "print" and job.copies > 1 %} × {{ job.copies }}{% endif %}</td>
+      <td class="muted">
+        {%- if job.kind == "print" -%}
+          {{ DUPLEX_OPTIONS.get(job.duplex, "") }}{% if job.color_mode %}, {{ COLOR_OPTIONS.get(job.color_mode) }}{% endif %}
+        {%- else -%}
+          {{ job.dpi }} DPI, {{ job.color_mode }}
+        {%- endif -%}
+      </td>
+      <td>{{ status(job.status) }}</td>
+      <td><a href="{{ '/scan/' ~ job.id if job.status == 'open' else '/jobs/' ~ job.id }}">Open</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">No jobs yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{%- endmacro %}

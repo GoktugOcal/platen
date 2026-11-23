@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Scanning{% endblock %}
+{% block content %}
+<h2>Scanning with {{ job.device_label }}</h2>
+<p class="muted">{{ job.dpi }} DPI · {{ job.color_mode }} · Put a page on the glass and press <em>Scan page</em>. Repeat for each page, then finish.</p>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+{% include "_scan_pages.html" %}
+
+<div class="toolbar">
+  <form method="post" action="/scan/{{ job.id }}/finish">
+    <button type="submit">Finish and make PDF</button>
+  </form>
+  <form method="post" action="/scan/{{ job.id }}/discard" onsubmit="return confirm('Discard all scanned pages?')">
+    <button type="submit" class="secondary outline">Discard</button>
+  </form>
+</div>
+{% endblock %}

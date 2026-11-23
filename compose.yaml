@@ -1,0 +1,24 @@
+services:
+  platen:
+    build:
+      context: .
+      target: app
+    image: platen:latest
+    container_name: platen
+    # Host networking lets CUPS and sane-airscan find printers/scanners via mDNS.
+    # The bundled CUPS listens only on a unix socket, so host port 631 stays free.
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PLATEN_PORT: ${PLATEN_PORT:-8631}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - platen-data:/data
+      # D-Bus is used to reach the host's avahi-daemon for mDNS discovery.
+      - /run/dbus:/run/dbus
+
+volumes:
+  platen-data:
