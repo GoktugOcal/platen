@@ -1,10 +1,13 @@
 # Platen
 
+[![CI](https://github.com/GoktugOcal/platen/actions/workflows/ci.yml/badge.svg)](https://github.com/GoktugOcal/platen/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 A self-hosted print & scan manager. Platen adds a web UI, a job log, and (later) users,
 statistics and document routing on top of **CUPS** and **SANE**. It does not ship its own
 printer drivers or protocol code.
 
-> **Status: v0.3.** Multiple users, printing and scanning to PDF, scan-to-email,
+> **Status: v0.4 in development** (last release v0.3). Multiple users, printing and scanning to PDF, scan-to-email,
 > Paperless-ngx upload, printing Office documents (optional), a job log, a usage dashboard
 > with toner history, and page quotas. OCR is on the roadmap.
 
@@ -49,8 +52,9 @@ Open `http://<host>:8631`. On first start you are asked to create the admin acco
 unless `PLATEN_PASSWORD` is set, in which case an admin `admin` is created with that password.
 Do this right away: until the first admin exists, anyone who can reach the port could create it.
 
-Tested on `arm64` (Raspberry Pi, Ubuntu 24.04). Every dependency is a Debian package or a
-pure-Python/manylinux wheel, so `amd64` should build too, but that hasn't been tested yet.
+Runs on `arm64` (tested on a Raspberry Pi with Ubuntu 24.04) and `amd64`; CI runs the
+tests on both. Prebuilt multi-arch images are published to
+`ghcr.io/goktugocal/platen` (`edge` follows `main`, version tags for releases).
 
 ## Configuration
 
