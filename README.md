@@ -34,6 +34,8 @@ printer drivers or protocol code.
   times and any error. The status updates live.
 - **Devices**: printer state, duplex/color support, supply levels (when reported) and the
   scanners SANE can see.
+- **Clean web UI** inspired by shadcn/ui: a collapsible left sidebar, light, dark and
+  system themes, and mobile layout. It's plain server-rendered HTML with HTMX, no build step.
 - **JSON API** for everything above (`/api/...`, docs at `/docs`).
 
 ## Quick start
@@ -58,10 +60,12 @@ All settings are environment variables (see `.env.example`):
 |---|---|---|
 | `PLATEN_PORT` | `8631` | Web UI port |
 | `PLATEN_PASSWORD` | *(empty)* | Creates admin `admin` with this password if there are no users yet. Otherwise use `/setup` |
-| `PLATEN_PRINTERS` | *(empty)* | Comma-separated `Name=ipp://host/ipp/print` (or just the URI). Empty means discover via mDNS |
-| `PLATEN_DISCOVER_PRINTERS` | `true` | Look for IPP Everywhere printers when none are configured |
-| `PLATEN_SCANNERS` | *(empty)* | Comma-separated `Name=http://host:port/eSCL` for sane-airscan (WSD URLs also work) |
-| `PLATEN_SCANNER_DISCOVERY` | `true` | Let sane-airscan find scanners via mDNS |
+| `PLATEN_PRINTERS` | *(empty)* | Extra printers, comma-separated `Name=ipp://host/ipp/print` (or just the URI) |
+| `PLATEN_DISCOVER_PRINTERS` | `true` | Find IPP Everywhere / AirPrint printers on the network |
+| `PLATEN_SCANNERS` | *(empty)* | Extra scanners, comma-separated `Name=http://host:port/eSCL` (WSD URLs also work) |
+| `PLATEN_SCANNER_DISCOVERY` | `true` | Find eSCL (AirScan) scanners on the network |
+| `PLATEN_DISCOVERY_INTERVAL` | `10` | Minutes between discovery runs (0 = only at start and on "Search again") |
+| `PLATEN_DISCOVERY_FORGET_HOURS` | `24` | Remove auto-discovered printers not seen for this long |
 | `PLATEN_SANE_BACKENDS` | `airscan` | SANE backends to enable |
 | `PLATEN_SMTP_HOST` / `_PORT` / `_SECURITY` | *(empty)* / `587` / `starttls` | SMTP server for scan-to-email (`ssl` for port 465) |
 | `PLATEN_SMTP_USER` / `_PASSWORD` / `_FROM` | *(empty)* | SMTP login. FROM defaults to the user |
@@ -188,17 +192,28 @@ One container runs:
 
 ### Device discovery
 
-mDNS does not cross Docker's bridge network, so the container uses `network_mode: host`.
-CUPS and sane-airscan reach the host's avahi-daemon over D-Bus (`/run/dbus` is mounted).
+Platen finds printers (`_ipp`/`_ipps`) and eSCL scanners (`_uscan`/`_uscans`) itself with
+multicast DNS. It uses python-zeroconf directly instead of going through avahi over D-Bus,
+so it also works under Docker's default AppArmor profile on Ubuntu. Each device found is
+set up with its fixed address (`ipp://IP:631/ipp/print`, `http://IP:8080/eSCL`), so
+printing and scanning don't depend on mDNS afterwards. Discovery runs at start, every
+`PLATEN_DISCOVERY_INTERVAL` minutes, and when an admin presses **Search again** on the
+Devices page. If a printer's address changes, its queue follows it.
 
-**Ubuntu/AppArmor:** Docker's default AppArmor profile blocks D-Bus calls from
-containers. You will see `apparmor="DENIED" operation="dbus_method_call"` in the kernel
-log, and discovery finds nothing. You can either:
+Manual entries (`PLATEN_PRINTERS` / `PLATEN_SCANNERS`) are always set up as well. A
+discovered device on the same host as a manual entry is skipped, so nothing appears twice.
 
-1. Configure devices by address with `PLATEN_PRINTERS` / `PLATEN_SCANNERS` (recommended;
-   give the printer a fixed DHCP lease), or
-2. Run the container with `security_opt: ["apparmor:unconfined"]`. This weakens the
-   container's isolation.
+Limits:
+- **Driverless devices only:** printers that support IPP Everywhere / AirPrint / Mopria
+  (most printers sold since about 2015) and eSCL / AirScan scanners. Printers that need a
+  vendor driver, or that only accept raw jobs on port 9100 or LPD, are not supported.
+- **Same network segment:** mDNS doesn't cross routers or VLANs. Use an mDNS reflector, or
+  add the device by address. The container needs `network_mode: host` (mDNS doesn't
+  cross Docker's bridge network either).
+- **IPv4 only:** devices are reached by their IPv4 address.
+- **Scanners announced only by WS-Discovery (WSD) aren't found;** add them with a WSD
+  URL in `PLATEN_SCANNERS`.
+- **USB devices aren't discovered** (see below).
 
 ### USB devices
 
@@ -242,14 +257,14 @@ PLATEN_TEST_DATABASE_URL=postgresql+psycopg://user:pw@localhost/platen_test .ven
 
 ## Roadmap
 
-1. **v0.1 MVP**: single user, scan to PDF, upload to print, job log.
-2. **v0.2**: local multi-user accounts, scan-to-email, Paperless-ngx, Office documents via
-   Gotenberg, optional Postgres.
-3. **v0.3**: built-in statistics dashboard with toner history, page quotas, and
-   documented remote access through any proxy, tunnel or VPN. *(this release)*
-4. **Later / optional**: OCR (OCRmyPDF), Prometheus `/metrics`, a separate worker with Redis
-   for large installs.
-5. **v1**: native IPP queue over the tailnet, Home Assistant, push-button scanning.
+See [ROADMAP.md](ROADMAP.md). In short:
+- **v0.4:** polish and ship (new UI, discovery, CI and images, security hardening)
+- **v0.5:** scanning depth (feeder, page tools, formats, presets)
+- **v0.6:** printing depth (preview, options, presets, hold and release)
+- **v0.7:** native print queue (AirPrint / Mopria) with per-user accounting
+- **v0.8:** integrations and alerts (SMB / WebDAV, webhooks, Home Assistant)
+- **v0.9:** accounting and admin (groups, costs, CSV, translations)
+- **v1.0:** stable (backup, USB, optional driver image, docs)
 
 ## License
 

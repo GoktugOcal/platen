@@ -2,25 +2,35 @@
 {% from "_macros.html" import jobs_table %}
 {% block title %}Jobs{% endblock %}
 {% block content %}
-<h2>Job log</h2>
-<form method="get" action="/jobs" class="toolbar">
-  <select name="kind" aria-label="Type" onchange="this.form.submit()">
-    <option value="">All types</option>
-    <option value="print" {% if kind == "print" %}selected{% endif %}>Print</option>
-    <option value="scan" {% if kind == "scan" %}selected{% endif %}>Scan</option>
-  </select>
-  <select name="status" aria-label="Status" onchange="this.form.submit()">
-    <option value="">All statuses</option>
-    {% for s in statuses %}
-    <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
-    {% endfor %}
-  </select>
-  <noscript><button type="submit">Filter</button></noscript>
-</form>
-
-<div id="jobs-table"
-     {% if polling %}hx-get="/jobs{% if query %}?{{ query }}{% endif %}" hx-trigger="every 2s"
-     hx-select="#jobs-table" hx-swap="outerHTML"{% endif %}>
-  {{ jobs_table(jobs, show_user=user.is_admin) }}
+<div class="page-header">
+  <div>
+    <h1>Job log</h1>
+    <p>Every print and scan, {{ "from all users" if user.is_admin else "that you started" }}. Active jobs update live.</p>
+  </div>
 </div>
+
+<section class="card flush">
+  <div class="card-header">
+    <form method="get" action="/jobs" class="toolbar">
+      <select name="kind" aria-label="Type" onchange="this.form.submit()">
+        <option value="">All types</option>
+        <option value="print" {% if kind == "print" %}selected{% endif %}>Print</option>
+        <option value="scan" {% if kind == "scan" %}selected{% endif %}>Scan</option>
+      </select>
+      <select name="status" aria-label="Status" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        {% for s in statuses %}
+        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="outline small">Filter</button></noscript>
+    </form>
+    <span class="muted small">{{ jobs | length }} job{{ "" if jobs | length == 1 else "s" }}</span>
+  </div>
+  <div id="jobs-table"
+       {% if polling %}hx-get="/jobs{% if query %}?{{ query }}{% endif %}" hx-trigger="every 2s"
+       hx-select="#jobs-table" hx-swap="outerHTML"{% endif %}>
+    {{ jobs_table(jobs, show_user=user.is_admin) }}
+  </div>
+</section>
 {% endblock %}

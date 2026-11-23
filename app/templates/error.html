@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Error{% endblock %}
 {% block content %}
-<h2>Something went wrong</h2>
-<p class="error" role="alert">{{ message }}</p>
-<p><a href="javascript:history.back()">← Go back</a></p>
+<section class="card" style="max-width: 36rem">
+  <div class="card-header"><div><h1 class="card-title" style="font-size:1.25rem">Something went wrong</h1></div></div>
+  <p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ message }}</span></p>
+  <a href="javascript:history.back()" class="btn outline small">← Go back</a>
+</section>
 {% endblock %}

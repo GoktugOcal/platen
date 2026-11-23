@@ -1,45 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Edit {{ target.username }}{% endblock %}
 {% block content %}
-<h2>Edit user: {{ target.username }}</h2>
-{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
-{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-<form method="post" action="/admin/users/{{ target.id }}">
-  <div class="grid-2">
-    <label>Role
-      <select name="role">
-        <option value="user" {% if target.role == "user" %}selected{% endif %}>User</option>
-        <option value="admin" {% if target.role == "admin" %}selected{% endif %}>Admin</option>
-      </select>
-    </label>
-    <label>Email <input type="email" name="email" value="{{ target.email }}"></label>
-    <label>New password <span class="muted">(leave empty to keep)</span>
-      <input type="password" name="password" minlength="8" autocomplete="new-password">
-    </label>
+<div class="page-header">
+  <div>
+    <h1>Edit user: {{ target.username }}</h1>
+    <p>Changing the password or disabling the account logs the user out everywhere.</p>
   </div>
-  <div class="grid-2">
-    <label>Page quota <span class="muted">(0 = unlimited)</span>
-      <input type="number" name="quota_pages" min="0" value="{{ target.quota_pages }}">
-    </label>
-    <label>Quota period
-      <select name="quota_period">
-        <option value="month" {% if target.quota_period == "month" %}selected{% endif %}>Per month</option>
-        <option value="week" {% if target.quota_period == "week" %}selected{% endif %}>Per week</option>
-      </select>
-    </label>
-  </div>
-  {% if not quota.unlimited %}<p class="muted">Used {{ quota.used }} of {{ quota.limit }} pages {{ quota.period_label }}.</p>{% endif %}
-  <label><input type="checkbox" name="active" value="1" {% if target.active %}checked{% endif %}> Active (can log in)</label>
-  {% if printers %}
-  <fieldset>
-    <legend>Printers <span class="muted">(none ticked = all printers)</span></legend>
-    {% for p in printers %}
-    <label><input type="checkbox" name="allowed_printers" value="{{ p.name }}" {% if p.name in target.printer_list %}checked{% endif %}> {{ p.label }}</label>
-    {% endfor %}
-  </fieldset>
-  {% endif %}
-  <button type="submit">Save</button>
-</form>
-<p class="muted">Changing the password or disabling the account logs the user out everywhere.</p>
-<p><a href="/admin/users">← All users</a></p>
+  <div class="page-actions"><a href="/admin/users" class="btn outline small">← All users</a></div>
+</div>
+{% if message %}<p class="notice" role="status">{{ icon("circle-check") }}<span>{{ message }}</span></p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
+
+<section class="card" style="max-width: 44rem">
+  <form method="post" action="/admin/users/{{ target.id }}">
+    <div class="grid-2">
+      <label>Role
+        <select name="role">
+          <option value="user" {% if target.role == "user" %}selected{% endif %}>User</option>
+          <option value="admin" {% if target.role == "admin" %}selected{% endif %}>Admin</option>
+        </select>
+      </label>
+      <label>Email <input type="email" name="email" value="{{ target.email }}"></label>
+      <label>New password <span class="muted">(leave empty to keep)</span>
+        <input type="password" name="password" minlength="8" autocomplete="new-password">
+      </label>
+      <div></div>
+      <label>Page quota <span class="muted">(0 = unlimited)</span>
+        <input type="number" name="quota_pages" min="0" value="{{ target.quota_pages }}">
+      </label>
+      <label>Quota period
+        <select name="quota_period">
+          <option value="month" {% if target.quota_period == "month" %}selected{% endif %}>Per month</option>
+          <option value="week" {% if target.quota_period == "week" %}selected{% endif %}>Per week</option>
+        </select>
+      </label>
+    </div>
+    {% if not quota.unlimited %}<p class="muted small">Used {{ quota.used }} of {{ quota.limit }} pages {{ quota.period_label }}.</p>{% endif %}
+    <label><input type="checkbox" name="active" value="1" {% if target.active %}checked{% endif %}> Active (can log in)</label>
+    {% if printers %}
+    <fieldset>
+      <legend>Printers <span class="muted">(none ticked = all printers)</span></legend>
+      {% for p in printers %}
+      <label><input type="checkbox" name="allowed_printers" value="{{ p.name }}" {% if p.name in target.printer_list %}checked{% endif %}> {{ p.label }}</label>
+      {% endfor %}
+    </fieldset>
+    {% endif %}
+    <button type="submit">Save</button>
+  </form>
+</section>
 {% endblock %}

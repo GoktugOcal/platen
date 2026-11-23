@@ -1,46 +1,62 @@
 {% extends "base.html" %}
 {% block title %}Scanning{% endblock %}
 {% block content %}
-<h2>Scanning with {{ job.device_label }}</h2>
-<p class="muted">{{ job.dpi }} DPI · {{ job.color_mode }} · Put a page on the glass and press <em>Scan page</em>. Repeat for each page, then finish.</p>
-{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-
-{% include "_scan_pages.html" %}
-
-<form method="post" action="/scan/{{ job.id }}/finish" id="finish-form">
-  {% if features.email or features.paperless %}
-  <fieldset>
-    <legend><strong>Send to</strong> <span class="muted">(the PDF is always kept for download)</span></legend>
-    {% if features.email %}
-    <label>
-      <input type="checkbox" name="deliver_email" value="1" {% if default_email %}checked{% endif %}
-             onchange="document.getElementById('email-field').hidden = !this.checked">
-      Email
-    </label>
-    <div id="email-field" {% if not default_email %}hidden{% endif %}>
-      <input type="email" name="email" value="{{ default_email }}" placeholder="name@example.com" aria-label="Email address">
-    </div>
-    {% endif %}
-    {% if features.paperless %}
-    <label>
-      <input type="checkbox" name="deliver_paperless" value="1" {% if not paperless_ready %}disabled{% endif %}
-             onchange="document.getElementById('paperless-box').hidden = !this.checked">
-      Paperless-ngx
-      {% if not paperless_ready %}<span class="muted">(add your API token on the <a href="/account">Account</a> page)</span>{% endif %}
-    </label>
-    <div id="paperless-box" hidden>
-      <div hx-get="/scan/{{ job.id }}/paperless-fields" hx-trigger="load" hx-swap="innerHTML">
-        <p class="muted" aria-busy="true">Loading tags and correspondents…</p>
-      </div>
-    </div>
-    {% endif %}
-  </fieldset>
-  {% endif %}
-  <div class="toolbar">
-    <button type="submit">Finish and make PDF</button>
+<div class="page-header">
+  <div>
+    <h1>Scanning with {{ job.device_label }}</h1>
+    <p>{{ job.dpi }} DPI · {{ job.color_mode }} · Put a page on the glass and press <em>Scan page</em>. Repeat for each page, then finish.</p>
   </div>
-</form>
-<form method="post" action="/scan/{{ job.id }}/discard" onsubmit="return confirm('Discard all scanned pages?')">
-  <button type="submit" class="secondary outline">Discard</button>
-</form>
+  <div class="page-actions">
+    <form method="post" action="/scan/{{ job.id }}/discard" onsubmit="return confirm('Discard all scanned pages?')">
+      <button type="submit" class="outline">{{ icon("trash-2") }}Discard</button>
+    </form>
+  </div>
+</div>
+{% if error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
+
+<div class="cols">
+  <section class="card">
+    <div class="card-header"><div><h2 class="card-title">Pages</h2>
+      <p class="card-description">Rescan or delete a page before finishing</p></div></div>
+    {% include "_scan_pages.html" %}
+  </section>
+
+  <section class="card">
+    <div class="card-header"><div><h2 class="card-title">Finish</h2>
+      <p class="card-description">The PDF is always kept for download</p></div></div>
+    <form method="post" action="/scan/{{ job.id }}/finish" id="finish-form">
+      {% if features.email or features.paperless %}
+      <fieldset>
+        <legend>Send to</legend>
+        {% if features.email %}
+        <label>
+          <input type="checkbox" name="deliver_email" value="1" {% if default_email %}checked{% endif %}
+                 onchange="document.getElementById('email-field').hidden = !this.checked">
+          {{ icon("mail") }}Email
+        </label>
+        <div id="email-field" {% if not default_email %}hidden{% endif %}>
+          <label><span class="muted">Recipient</span>
+            <input type="email" name="email" value="{{ default_email }}" placeholder="name@example.com">
+          </label>
+        </div>
+        {% endif %}
+        {% if features.paperless %}
+        <label>
+          <input type="checkbox" name="deliver_paperless" value="1" {% if not paperless_ready %}disabled{% endif %}
+                 onchange="document.getElementById('paperless-box').hidden = !this.checked">
+          {{ icon("archive") }}Paperless-ngx
+        </label>
+        {% if not paperless_ready %}<p class="muted small">Add your API token on the <a href="/account">Account</a> page to enable this.</p>{% endif %}
+        <div id="paperless-box" hidden>
+          <div hx-get="/scan/{{ job.id }}/paperless-fields" hx-trigger="load" hx-swap="innerHTML">
+            <p class="muted" aria-busy="true">Loading tags and correspondents…</p>
+          </div>
+        </div>
+        {% endif %}
+      </fieldset>
+      {% endif %}
+      <button type="submit" style="width:100%">{{ icon("file-text") }}Finish and make PDF</button>
+    </form>
+  </section>
+</div>
 {% endblock %}

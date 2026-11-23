@@ -17,7 +17,7 @@ ADMIN_PASSWORD = "admin-pass-123"
 def make_settings(tmp_path, **overrides) -> Settings:
     values = dict(
         data_dir=tmp_path, backend="fake", poll_interval=0.01, discover_printers=False,
-        password=ADMIN_PASSWORD,
+        password=ADMIN_PASSWORD, sane_config_dir=tmp_path / "no-sane",
         # Run the suite against Postgres with PLATEN_TEST_DATABASE_URL=postgresql+psycopg://...
         database_url=os.environ.get("PLATEN_TEST_DATABASE_URL", ""),
     )

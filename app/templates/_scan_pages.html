@@ -1,27 +1,33 @@
 <section id="scan-pages">
-  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
+  {% if pages %}
   <div class="pages">
     {% for page in pages %}
     <figure class="page">
       <img src="/scan/{{ job.id }}/pages/{{ page.id }}/thumb?v={{ page.created_at.timestamp() | int }}" alt="Page {{ loop.index }}" loading="lazy">
       <figcaption>Page {{ loop.index }}</figcaption>
       <div class="actions">
-        <button class="small outline" hx-post="/scan/{{ job.id }}/pages/{{ page.id }}/rescan"
+        <button class="small outline icon-btn" title="Rescan page {{ loop.index }}" aria-label="Rescan page {{ loop.index }}"
+                hx-post="/scan/{{ job.id }}/pages/{{ page.id }}/rescan"
                 hx-target="#scan-pages" hx-swap="outerHTML" hx-disabled-elt="#scan-pages button"
-                hx-indicator="#scan-progress">Rescan</button>
-        <button class="small outline secondary" hx-post="/scan/{{ job.id }}/pages/{{ page.id }}/delete"
+                hx-indicator="#scan-progress">{{ icon("rotate-cw") }}<span hidden>Rescan</span></button>
+        <button class="small outline icon-btn" title="Delete page {{ loop.index }}" aria-label="Delete page {{ loop.index }}"
+                hx-post="/scan/{{ job.id }}/pages/{{ page.id }}/delete"
                 hx-target="#scan-pages" hx-swap="outerHTML" hx-disabled-elt="#scan-pages button"
-                hx-confirm="Delete page {{ loop.index }}?">Delete</button>
+                hx-confirm="Delete page {{ loop.index }}?">{{ icon("trash-2") }}<span hidden>Delete</span></button>
       </div>
     </figure>
     {% endfor %}
   </div>
+  {% else %}
+  <div class="page-empty">{{ icon("scan-line", size=28) }}<span>No pages yet. Put the first page on the glass.</span></div>
+  {% endif %}
   <div class="toolbar">
     <button hx-post="/scan/{{ job.id }}/pages" hx-target="#scan-pages" hx-swap="outerHTML"
             hx-disabled-elt="#scan-pages button" hx-indicator="#scan-progress">
-      {{ "Scan page" if not pages else "Scan next page" }}
+      {{ icon("scan-line") }}{{ "Scan page" if not pages else "Scan next page" }}
     </button>
-    <span id="scan-progress" class="htmx-indicator" aria-busy="true">Scanning…</span>
+    <span id="scan-progress" class="htmx-indicator muted" aria-busy="true">Scanning…</span>
     <span class="muted">{{ pages | length }} page{{ "" if pages | length == 1 else "s" }}</span>
   </div>
 </section>

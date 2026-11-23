@@ -1,25 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Scan{% endblock %}
 {% block content %}
-<h2>Scan</h2>
+<div class="page-header">
+  <div>
+    <h1>Scan</h1>
+    <p>Scan page by page from the glass, then make one PDF to download, email or file in Paperless.</p>
+  </div>
+  <div class="page-actions">
+    <a href="/scan?refresh=1{% if selected %}&device={{ selected.id | urlencode }}{% endif %}" class="btn outline small">{{ icon("refresh-cw") }}Search for scanners again</a>
+  </div>
+</div>
 
 {% if sessions %}
-<article>
-  <strong>Unfinished scans</strong>
-  <ul>
-    {% for s in sessions %}
-    <li><a href="/scan/{{ s.id }}">{{ s.device_label }} · started {{ s.created_at | localtime }}</a></li>
-    {% endfor %}
-  </ul>
-</article>
+<section class="card">
+  <div class="card-header"><div><h2 class="card-title">Unfinished scans</h2>
+    <p class="card-description">Pick up where you left off</p></div></div>
+  {% for s in sessions %}
+  <a class="resume" href="/scan/{{ s.id }}">{{ icon("scan-line") }}<span>{{ s.device_label }} · started {{ s.created_at | localtime }}</span>{{ icon("chevron-right", size=14) }}</a>
+  {% endfor %}
+</section>
 {% endif %}
 
 {% if not scanners %}
-  <p class="notice">No scanners found. Make sure the scanner is on and on the same network,
-    then <a href="/scan?refresh=1">search again</a>.</p>
+  <p class="notice">{{ icon("info") }}<span>No scanners found. Make sure the scanner is on and on the same network,
+    then <a href="/scan?refresh=1">search again</a>.</span></p>
 {% else %}
-<form method="post" action="/scan">
-  <div class="grid-2">
+<section class="card" style="max-width: 40rem">
+  <div class="card-header"><div><h2 class="card-title">New scan</h2>
+    <p class="card-description">200 DPI is enough for documents. Use 300 DPI or higher for photos or small print.</p></div></div>
+  <form method="post" action="/scan">
     <label>Scanner
       <select name="device" onchange="location='/scan?device='+encodeURIComponent(this.value)">
         {% for s in scanners %}
@@ -28,26 +37,28 @@
       </select>
     </label>
     {% if caps %}
-    <label>Resolution
-      <select name="dpi">
-        {% for dpi in caps.resolutions %}
-        <option value="{{ dpi }}" {% if dpi == caps.default_resolution() %}selected{% endif %}>{{ dpi }} DPI</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Mode
-      <select name="mode">
-        {% for mode in caps.modes %}
-        <option value="{{ mode }}" {% if mode == caps.default_mode() %}selected{% endif %}>{{ mode }}</option>
-        {% endfor %}
-      </select>
-    </label>
+    <div class="grid-2">
+      <label>Resolution
+        <select name="dpi">
+          {% for dpi in caps.resolutions %}
+          <option value="{{ dpi }}" {% if dpi == caps.default_resolution() %}selected{% endif %}>{{ dpi }} DPI</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Mode
+        <select name="mode">
+          {% for mode in caps.modes %}
+          <option value="{{ mode }}" {% if mode == caps.default_mode() %}selected{% endif %}>{{ mode }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
     {% endif %}
-  </div>
-  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-  <p class="muted">200 DPI is enough for documents. Use 300 DPI or higher for photos or small print.</p>
-  <button type="submit" {% if not caps %}disabled{% endif %}>Start scanning</button>
-  <a href="/scan?refresh=1{% if selected %}&device={{ selected.id | urlencode }}{% endif %}" class="secondary">Search for scanners again</a>
-</form>
+    {% if error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
+    <div class="form-actions">
+      <button type="submit" {% if not caps %}disabled{% endif %}>{{ icon("scan-line") }}Start scanning</button>
+    </div>
+  </form>
+</section>
 {% endif %}
 {% endblock %}

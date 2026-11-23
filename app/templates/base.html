@@ -5,31 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}Platen{% endblock %} · Platen</title>
-  <link rel="stylesheet" href="/static/pico.min.css">
-  <link rel="stylesheet" href="/static/app.css">
+  <script>
+    // Apply saved theme and sidebar state before first paint (no flash).
+    (function () {
+      var t = localStorage.getItem("platen-theme");
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      if (localStorage.getItem("platen-sidebar") === "collapsed" && !matchMedia("(max-width: 860px)").matches)
+        document.documentElement.setAttribute("data-sidebar", "collapsed");
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/app.css?v={{ app_version }}">
   <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js?v={{ app_version }}" defer></script>
 </head>
 <body>
-  <header class="container">
-    <nav>
-      <ul><li><a href="/" class="brand"><strong>Platen</strong></a></li></ul>
-      {% set path = request.url.path %}
-      {% if user %}
-      <ul>
-        <li><a href="/print" {% if path.startswith('/print') %}aria-current="page"{% endif %}>Print</a></li>
-        <li><a href="/scan" {% if path.startswith('/scan') %}aria-current="page"{% endif %}>Scan</a></li>
-        <li><a href="/jobs" {% if path.startswith('/jobs') %}aria-current="page"{% endif %}>Jobs</a></li>
-        <li><a href="/stats" {% if path.startswith('/stats') %}aria-current="page"{% endif %}>Stats</a></li>
-        <li><a href="/devices" {% if path.startswith('/devices') %}aria-current="page"{% endif %}>Devices</a></li>
-        {% if user.is_admin %}<li><a href="/admin/users" {% if path.startswith('/admin') %}aria-current="page"{% endif %}>Users</a></li>{% endif %}
-        <li><a href="/account" {% if path.startswith('/account') %}aria-current="page"{% endif %}>{{ user.username }}</a></li>
-        <li><form method="post" action="/logout" class="inline"><button class="outline secondary small">Log out</button></form></li>
-      </ul>
-      {% endif %}
+{% if user %}
+{% set path = request.url.path %}
+{% macro nav(href, icon_name, label, active) -%}
+<a class="nav-item" href="{{ href }}" {% if active %}aria-current="page"{% endif %} title="{{ label }}">
+  {{ icon(icon_name) }}<span class="nav-text">{{ label }}</span>
+</a>
+{%- endmacro %}
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <div class="sidebar-header">
+      <a href="/" class="brand">
+        <span class="brand-mark">{{ icon("printer") }}</span>
+        <span class="brand-text"><strong>Platen</strong><small>Print &amp; scan · v{{ app_version }}</small></span>
+      </a>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-label">Workspace</div>
+        {{ nav("/print", "printer", "Print", path.startswith("/print")) }}
+        {{ nav("/scan", "scan-line", "Scan", path.startswith("/scan")) }}
+        {{ nav("/jobs", "history", "Jobs", path.startswith("/jobs")) }}
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Insights</div>
+        {{ nav("/stats", "chart-column", "Statistics", path.startswith("/stats")) }}
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">System</div>
+        {{ nav("/devices", "server", "Devices", path.startswith("/devices")) }}
+        {% if user.is_admin %}{{ nav("/admin/users", "users", "Users", path.startswith("/admin")) }}{% endif %}
+      </div>
     </nav>
-  </header>
-  <main class="container">
-    {% block content %}{% endblock %}
-  </main>
+    <div class="sidebar-footer">
+      <a href="/account" class="user-chip" title="Account" {% if path.startswith("/account") %}aria-current="page"{% endif %}>
+        <span class="avatar">{{ user.username[:2] }}</span>
+        <span class="user-meta"><strong>{{ user.username }}</strong><small>{{ "Administrator" if user.is_admin else "User" }}</small></span>
+      </a>
+      <div class="sidebar-actions">
+        <button type="button" class="ghost small" data-action="theme" title="Switch theme">
+          {{ icon("sun") }}<span class="btn-text" data-theme-label>System theme</span>
+        </button>
+        <form method="post" action="/logout">
+          <button class="ghost small" title="Log out">{{ icon("log-out") }}<span class="btn-text">Log out</span></button>
+        </form>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim"></div>
+  <div class="main">
+    <header class="topbar">
+      <button type="button" class="ghost icon-btn small" data-action="sidebar" title="Toggle sidebar (Ctrl+B)" aria-controls="sidebar">
+        {{ icon("panel-left") }}
+      </button>
+      <span class="sep"></span>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <span>Platen</span>{{ icon("chevron-right", size=14) }}<strong>{{ self.title() }}</strong>
+      </nav>
+    </header>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+<main class="auth">
+  <div class="auth-box">
+    <a href="/" class="brand">
+      <span class="brand-mark">{{ icon("printer") }}</span>
+      <span class="brand-text"><strong>Platen</strong><small>Print &amp; scan manager</small></span>
+    </a>
+    {{ self.content() }}
+  </div>
+</main>
+{% endif %}
 </body>
 </html>

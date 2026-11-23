@@ -1,30 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Users{% endblock %}
 {% block content %}
-<h2>Users</h2>
-{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-<div class="table-wrap">
-<table class="striped">
-  <thead><tr><th>Username</th><th>Role</th><th>Email</th><th>Printers</th><th>Quota</th><th>Status</th><th>Last login</th><th></th></tr></thead>
-  <tbody>
-  {% for u in users %}
-    <tr>
-      <td><strong>{{ u.username }}</strong></td>
-      <td>{{ u.role }}</td>
-      <td>{{ u.email }}</td>
-      <td class="wrap">{{ u.printer_list | join(", ") if u.printer_list else "all" }}</td>
-      <td>{% set q = quotas[u.id] %}{% if q.unlimited %}<span class="muted">none</span>{% else %}{{ q.used }} / {{ q.limit }} per {{ q.period }}{% endif %}</td>
-      <td>{{ "active" if u.active else "disabled" }}</td>
-      <td>{{ u.last_login_at | localtime }}</td>
-      <td><a href="/admin/users/{{ u.id }}">Edit</a></td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="page-header">
+  <div>
+    <h1>Users</h1>
+    <p>Accounts, roles, printer access and page quotas.</p>
+  </div>
 </div>
+{% if error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
 
-<article>
-  <h3>Add a user</h3>
+<section class="card flush">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>User</th><th>Role</th><th>Printers</th><th>Quota</th><th>Status</th><th>Last login</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td><div class="user-cell"><span class="avatar">{{ u.username[:2] }}</span>
+          <span><strong>{{ u.username }}</strong><br><span class="muted small">{{ u.email or "no email" }}</span></span></div></td>
+        <td><span class="badge">{{ u.role }}</span></td>
+        <td class="wrap">{{ u.printer_list | join(", ") if u.printer_list else "all" }}</td>
+        <td>{% set q = quotas[u.id] %}{% if q.unlimited %}<span class="muted">none</span>{% else %}{{ q.used }} / {{ q.limit }} per {{ q.period }}{% endif %}</td>
+        <td><span class="status {{ 'status-done' if u.active else 'status-cancelled' }}">{{ "active" if u.active else "disabled" }}</span></td>
+        <td class="muted">{{ u.last_login_at | localtime }}</td>
+        <td class="num"><a class="btn ghost small" href="/admin/users/{{ u.id }}">Edit{{ icon("chevron-right", size=14) }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="card" style="max-width: 44rem">
+  <div class="card-header"><div><h2 class="card-title">Add a user</h2>
+    <p class="card-description">They can change their password on the Account page</p></div></div>
   <form method="post" action="/admin/users">
     <div class="grid-2">
       <label>Username <input type="text" name="username" value="{{ form.username or '' }}" autocapitalize="none" required></label>
@@ -36,8 +45,6 @@
           <option value="admin" {% if form.role == "admin" %}selected{% endif %}>Admin</option>
         </select>
       </label>
-    </div>
-    <div class="grid-2">
       <label>Page quota <span class="muted">(0 = unlimited)</span>
         <input type="number" name="quota_pages" min="0" value="{{ form.quota_pages or 0 }}">
       </label>
@@ -53,7 +60,7 @@
       {% endfor %}
     </fieldset>
     {% endif %}
-    <button type="submit">Add user</button>
+    <button type="submit">{{ icon("users") }}Add user</button>
   </form>
-</article>
+</section>
 {% endblock %}

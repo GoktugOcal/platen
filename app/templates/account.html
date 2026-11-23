@@ -1,59 +1,76 @@
 {% extends "base.html" %}
 {% block title %}Account{% endblock %}
 {% block content %}
-<h2>Account: {{ user.username }} <span class="muted">({{ user.role }})</span></h2>
-{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
-{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-
-<article>
-  <h3>Profile</h3>
-  <form method="post" action="/account/profile">
-    <label>Email <span class="muted">(default address for scan-to-email)</span>
-      <input type="email" name="email" value="{{ user.email }}" autocomplete="email">
-    </label>
-    {% if features.paperless %}
-    <label>Paperless API token <span class="muted">(from Paperless: your profile → API Auth Token; documents will be owned by you)</span>
-      <input type="password" name="paperless_token" value="{{ user.paperless_token }}" autocomplete="off">
-    </label>
-    {% endif %}
-    <button type="submit">Save</button>
-  </form>
-</article>
-
-<article>
-  <h3>Password</h3>
-  <form method="post" action="/account/password">
-    <label>Current password <input type="password" name="current" autocomplete="current-password" required></label>
-    <div class="grid-2">
-      <label>New password <input type="password" name="new" minlength="8" autocomplete="new-password" required></label>
-      <label>Repeat new password <input type="password" name="new2" minlength="8" autocomplete="new-password" required></label>
-    </div>
-    <button type="submit">Change password</button>
-  </form>
-</article>
-
-<article>
-  <h3>API token</h3>
-  <p class="muted">For scripts and the JSON API: <code>Authorization: Bearer &lt;token&gt;</code>. Creating a new token replaces the old one.</p>
-  {% if new_token %}
-  <p class="notice">Copy this token now. It will not be shown again:</p>
-  <pre><code>{{ new_token }}</code></pre>
-  {% endif %}
-  <div class="toolbar">
-    <form method="post" action="/account/token" class="inline">
-      <input type="hidden" name="action" value="new">
-      <button type="submit" class="outline">{{ "Replace token" if user.api_token_hash else "Create token" }}</button>
-    </form>
-    {% if user.api_token_hash %}
-    <form method="post" action="/account/token" class="inline">
-      <input type="hidden" name="action" value="revoke">
-      <button type="submit" class="outline secondary">Revoke token</button>
-    </form>
-    {% endif %}
+<div class="page-header">
+  <div>
+    <h1>Account: {{ user.username }} <span class="badge">{{ user.role }}</span></h1>
+    <p>Your profile, password and API access.</p>
   </div>
-</article>
+</div>
+{% if message %}<p class="notice" role="status">{{ icon("circle-check") }}<span>{{ message }}</span></p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
 
-<form method="post" action="/account/logout-everywhere">
-  <button type="submit" class="secondary outline">Log out on all devices</button>
-</form>
+<div class="cols">
+  <div>
+    <section class="card">
+      <div class="card-header"><div><h2 class="card-title">Profile</h2>
+        <p class="card-description">Default address for scan-to-email{% if features.paperless %} and your Paperless token{% endif %}</p></div></div>
+      <form method="post" action="/account/profile">
+        <label>Email
+          <input type="email" name="email" value="{{ user.email }}" autocomplete="email">
+        </label>
+        {% if features.paperless %}
+        <label>Paperless API token <span class="muted">(Paperless → your profile → API Auth Token; documents will be owned by you)</span>
+          <input type="password" name="paperless_token" value="{{ user.paperless_token }}" autocomplete="off">
+        </label>
+        {% endif %}
+        <button type="submit">Save</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><div><h2 class="card-title">Password</h2>
+        <p class="card-description">Changing it logs out your other sessions</p></div></div>
+      <form method="post" action="/account/password">
+        <label>Current password <input type="password" name="current" autocomplete="current-password" required></label>
+        <div class="grid-2">
+          <label>New password <input type="password" name="new" minlength="8" autocomplete="new-password" required></label>
+          <label>Repeat new password <input type="password" name="new2" minlength="8" autocomplete="new-password" required></label>
+        </div>
+        <button type="submit">Change password</button>
+      </form>
+    </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <div class="card-header"><div><h2 class="card-title">API token</h2>
+        <p class="card-description">For scripts: <code>Authorization: Bearer &lt;token&gt;</code>. A new token replaces the old one.</p></div></div>
+      {% if new_token %}
+      <p class="notice">{{ icon("info") }}<span>Copy this token now. It will not be shown again:</span></p>
+      <pre><code>{{ new_token }}</code></pre>
+      {% endif %}
+      <div class="toolbar">
+        <form method="post" action="/account/token" class="inline">
+          <input type="hidden" name="action" value="new">
+          <button type="submit" class="outline small">{{ "Replace token" if user.api_token_hash else "Create token" }}</button>
+        </form>
+        {% if user.api_token_hash %}
+        <form method="post" action="/account/token" class="inline">
+          <input type="hidden" name="action" value="revoke">
+          <button type="submit" class="ghost small">Revoke token</button>
+        </form>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><div><h2 class="card-title">Sessions</h2>
+        <p class="card-description">Sign out on every browser and device</p></div></div>
+      <form method="post" action="/account/logout-everywhere">
+        <button type="submit" class="outline small">{{ icon("log-out") }}Log out on all devices</button>
+      </form>
+    </section>
+  </div>
+</div>
 {% endblock %}

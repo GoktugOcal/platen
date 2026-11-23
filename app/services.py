@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import UploadFile
 
@@ -96,6 +97,7 @@ class Services:
         printers: PrinterBackend,
         scanners: ScannerBackend,
         runner: JobRunner,
+        discoverer=None,
     ) -> None:
         self.settings = settings
         self.db = db
@@ -106,6 +108,12 @@ class Services:
         self._caps_cache: dict[str, ScannerCaps] = {}
         self._paperless_cache: dict[str, tuple[float, dict]] = {}
         self.device_messages: list[str] = []
+        self.discoverer = discoverer
+        self.device_origin: dict[str, str] = {}      # CUPS queue -> manual | discovered
+        self.scanner_origin: dict[str, str] = {}     # airscan device name -> manual | discovered
+        self._last_seen: dict[str, float] = {}
+        self._scanners_seen: dict[str, tuple[str, str, float]] = {}  # label -> (uri, host, seen)
+        self.last_discovery: dict | None = None
 
     # --- devices ------------------------------------------------------------
 
@@ -128,31 +136,93 @@ class Services:
                 return printer
         raise ServiceError(f"Unknown printer: {name}", 404)
 
-    async def sync_printers(self) -> list[str]:
-        """Create CUPS queues for configured (or discovered) printers."""
+    async def sync_devices(self) -> list[str]:
+        """Set up printers and scanners from PLATEN_* settings plus network discovery.
+
+        Manual entries always win; a discovered device on the same host is skipped.
+        Discovered printers that stay unseen for ``discovery_forget_hours`` are removed.
+        """
+        from .container_setup import scanner_entries, write_airscan_conf
+        from .discovery import DiscoveryResult, discover
+
+        st = self.settings
         messages: list[str] = []
-        entries = self.settings.printer_entries()
-        if not entries and self.settings.discover_printers:
-            try:
-                discovered = await asyncio.to_thread(self.printers.discover)
-            except PrinterError as exc:
-                discovered = []
-                messages.append(str(exc))
-            entries = [(label, uri) for label, uri in discovered]
-            if not discovered:
-                messages.append(
-                    "No IPP Everywhere printers were found via mDNS. If discovery is blocked "
-                    "(e.g. AppArmor denies D-Bus to containers), set PLATEN_PRINTERS."
-                )
-        for name, uri in entries:
+        found = DiscoveryResult()
+        if self.discoverer is not None and (st.discover_printers or st.scanner_discovery):
+            found = await asyncio.to_thread(discover, self.discoverer, st.discovery_timeout)
+
+        # --- printers
+        wanted: list[tuple[str, str, str, str]] = []   # (queue, uri, label, origin)
+        manual_hosts: set[str] = set()
+        for name, uri in st.printer_entries():
             label = name or name_from_uri(uri)
+            wanted.append((queue_name(label), uri, label, "manual"))
+            manual_hosts.add(urlparse(uri).hostname or uri)
+        if st.discover_printers:
+            for f in found.printers:
+                if f.host in manual_hosts:
+                    continue
+                wanted.append((queue_name(f.label), f.uri, f.label, "discovered"))
+        now = time.monotonic()
+        for queue, uri, label, origin in wanted:
             try:
-                await asyncio.to_thread(self.printers.ensure_queue, queue_name(label), uri, label)
+                await asyncio.to_thread(self.printers.ensure_queue, queue, uri, label)
             except PrinterError as exc:
                 log.warning("%s", exc)
                 messages.append(str(exc))
+                continue
+            self.device_origin[queue] = origin
+            if origin == "discovered":
+                self._last_seen[queue] = now
+        forget = st.discovery_forget_hours * 3600
+        for queue, seen in list(self._last_seen.items()):
+            if now - seen > forget and self.device_origin.get(queue) == "discovered":
+                try:
+                    await asyncio.to_thread(self.printers.remove_queue, queue)
+                    messages.append(f"Removed {queue}: not seen on the network for "
+                                    f"{st.discovery_forget_hours} hours.")
+                except PrinterError as exc:
+                    log.warning("%s", exc)
+                self._last_seen.pop(queue, None)
+                self.device_origin.pop(queue, None)
+
+        # --- scanners (sane-airscan reads its config on every scan, so rewriting is enough)
+        entries = scanner_entries(st.scanners)
+        manual_scan_hosts = {urlparse(url).hostname for _, url in entries}
+        origins = {name: "manual" for name, _ in entries}
+        if st.scanner_discovery:
+            # Remember scanners across runs: one lost mDNS answer must not drop a scanner.
+            for f in found.scanners:
+                self._scanners_seen[f.label] = (f.uri, f.host, now)
+            for label, (uri, host, seen) in sorted(self._scanners_seen.items()):
+                if now - seen > forget:
+                    del self._scanners_seen[label]
+                    continue
+                if host in manual_scan_hosts or label in origins:
+                    continue
+                entries.append((label, uri))
+                origins[label] = "discovered"
+        self.scanner_origin = origins
+        if st.sane_config_dir.is_dir():
+            try:
+                if await asyncio.to_thread(write_airscan_conf, st.sane_config_dir, entries):
+                    self._scanner_cache = None
+                    self._caps_cache.clear()
+            except OSError as exc:
+                messages.append(f"Could not update the scanner config: {exc}")
+
+        if not wanted and (st.discover_printers or not st.printer_entries()):
+            messages.append("No printers found. Make sure the printer supports IPP Everywhere "
+                            "/ AirPrint and is on the same network, or set PLATEN_PRINTERS.")
+        self.last_discovery = {"printers": len(found.printers), "scanners": len(found.scanners),
+                               "at": utcnow()}
         self.device_messages = messages
         return messages
+
+    def scanner_source(self, device_id: str) -> str:
+        """'manual' / 'discovered' for airscan devices (id: airscan:<n>:<name>)."""
+        name = device_id.split(":", 2)[2] if device_id.count(":") >= 2 else device_id
+        return self.scanner_origin.get(name, "")
 
     async def list_scanners(self, refresh: bool = False) -> list[ScannerInfo]:
         cached = self._scanner_cache

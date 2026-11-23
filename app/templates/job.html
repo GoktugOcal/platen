@@ -6,71 +6,79 @@
 {% set delivering = deliveries | selectattr("status", "in", ["pending", "sending"]) | list | length > 0 %}
 <section id="job-status"
          {% if active or delivering %}hx-get="/jobs/{{ job.id }}" hx-trigger="every 2s" hx-select="#job-status" hx-swap="outerHTML"{% endif %}>
-  <h2>{{ "Print" if job.kind == "print" else "Scan" }} job {{ status(job.status) }}</h2>
-  {% if job.error %}<p class="error" role="alert">{{ job.error }}</p>{% endif %}
-
-  {% if job.status == "done" and job.kind == "scan" and not job.files_purged %}
-    <p><a href="/jobs/{{ job.id }}/file" role="button" download>Download PDF</a></p>
-  {% elif active %}
-    <p aria-busy="true">{{ "Printing…" if job.kind == "print" else "Building the PDF…" }}</p>
-  {% endif %}
-
-  {% if deliveries %}
-  <h3>Deliveries</h3>
-  <table>
-    <tbody>
-    {% for d in deliveries %}
-      <tr>
-        <th>{{ "Email" if d.kind == "email" else "Paperless" }}</th>
-        <td class="wrap">{{ d.target if d.kind == "email" else "" }}</td>
-        <td>{{ status(d.status) }}</td>
-        <td class="wrap">
-          {% if d.status in ("pending", "sending") %}<span aria-busy="true">Sending…</span>{% endif %}
-          {% if d.result %}{% if d.result_url %}<a href="{{ d.result_url }}" target="_blank" rel="noopener">{{ d.result }}</a>{% else %}{{ d.result }}{% endif %}{% endif %}
-          {% if d.error %}<span class="error">{{ d.error }}</span>{% endif %}
-        </td>
-        <td>
-          {% if d.status == "failed" and job.status == "done" %}
-          <form method="post" action="/jobs/{{ job.id }}/deliveries/{{ d.id }}/retry" class="inline">
-            <button class="small outline" type="submit">Retry</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-
-  <h3>Details</h3>
-  <table>
-    <tbody>
-      <tr><th>Device</th><td>{{ job.device_label or job.device }}</td></tr>
-      {% if job.filename %}<tr><th>File</th><td>{{ job.filename }}{% if job.file_size %} <span class="muted">({{ job.file_size | filesize }})</span>{% endif %}</td></tr>{% endif %}
-      <tr><th>Pages</th><td>{{ job.pages if job.pages is not none else "unknown" }}</td></tr>
-      {% if job.kind == "print" %}
-      <tr><th>Copies</th><td>{{ job.copies }}</td></tr>
-      <tr><th>Sides</th><td>{{ DUPLEX_OPTIONS.get(job.duplex, "") }}</td></tr>
-      <tr><th>Color</th><td>{{ COLOR_OPTIONS.get(job.color_mode or "", job.color_mode) }}</td></tr>
-      {% if job.page_range %}<tr><th>Page range</th><td>{{ job.page_range }}</td></tr>{% endif %}
-      {% if job.cups_job_id %}<tr><th>CUPS job</th><td>{{ job.cups_job_id }}</td></tr>{% endif %}
-      {% else %}
-      <tr><th>Resolution</th><td>{{ job.dpi }} DPI</td></tr>
-      <tr><th>Mode</th><td>{{ job.color_mode }}</td></tr>
+  <div class="page-header">
+    <div>
+      <h1>{{ icon("printer" if job.kind == "print" else "scan-line", size=22) }}{{ "Print" if job.kind == "print" else "Scan" }} job {{ status(job.status) }}</h1>
+      <p>{{ job.filename or job.id }} · {{ job.device_label or job.device }}</p>
+    </div>
+    <div class="page-actions">
+      {% if job.status == "done" and job.kind == "scan" and not job.files_purged %}
+        <a href="/jobs/{{ job.id }}/file" role="button" download>{{ icon("download") }}Download PDF</a>
       {% endif %}
-      <tr><th>User</th><td>{{ job.user }}</td></tr>
-      <tr><th>Created</th><td>{{ job.created_at | localtime }}</td></tr>
-      {% if job.started_at %}<tr><th>Started</th><td>{{ job.started_at | localtime }}</td></tr>{% endif %}
-      {% if job.finished_at %}<tr><th>Finished</th><td>{{ job.finished_at | localtime }}</td></tr>{% endif %}
-      {% if job.files_purged %}<tr><th>Files</th><td class="muted">deleted after the retention period</td></tr>{% endif %}
-    </tbody>
-  </table>
+      {% if active %}
+      <form method="post" action="/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Cancel this job?')">
+        <button type="submit" class="outline">{{ icon("x") }}Cancel job</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
 
-  {% if active %}
-  <form method="post" action="/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Cancel this job?')">
-    <button type="submit" class="secondary outline">Cancel job</button>
-  </form>
-  {% endif %}
+  {% if job.error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ job.error }}</span></p>{% endif %}
+  {% if active %}<p class="notice"><span aria-busy="true">{{ "Printing…" if job.kind == "print" else "Building the PDF…" }}</span></p>{% endif %}
+
+  <div class="cols">
+    <section class="card">
+      <div class="card-header"><div><h2 class="card-title">Details</h2></div></div>
+      <table class="kv">
+        <tbody>
+          <tr><th>Device</th><td>{{ job.device_label or job.device }}</td></tr>
+          {% if job.filename %}<tr><th>File</th><td>{{ job.filename }}{% if job.file_size %} <span class="muted">({{ job.file_size | filesize }})</span>{% endif %}</td></tr>{% endif %}
+          <tr><th>Pages</th><td>{{ job.pages if job.pages is not none else "unknown" }}</td></tr>
+          {% if job.kind == "print" %}
+          <tr><th>Copies</th><td>{{ job.copies }}</td></tr>
+          <tr><th>Sides</th><td>{{ DUPLEX_OPTIONS.get(job.duplex, "") }}</td></tr>
+          <tr><th>Color</th><td>{{ COLOR_OPTIONS.get(job.color_mode or "", job.color_mode) }}</td></tr>
+          {% if job.page_range %}<tr><th>Page range</th><td>{{ job.page_range }}</td></tr>{% endif %}
+          {% if job.cups_job_id %}<tr><th>CUPS job</th><td>{{ job.cups_job_id }}</td></tr>{% endif %}
+          {% else %}
+          <tr><th>Resolution</th><td>{{ job.dpi }} DPI</td></tr>
+          <tr><th>Mode</th><td>{{ job.color_mode }}</td></tr>
+          {% endif %}
+          <tr><th>User</th><td>{{ job.user }}</td></tr>
+          <tr><th>Created</th><td>{{ job.created_at | localtime }}</td></tr>
+          {% if job.started_at %}<tr><th>Started</th><td>{{ job.started_at | localtime }}</td></tr>{% endif %}
+          {% if job.finished_at %}<tr><th>Finished</th><td>{{ job.finished_at | localtime }}</td></tr>{% endif %}
+          {% if job.files_purged %}<tr><th>Files</th><td class="muted">deleted after the retention period</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><div><h2 class="card-title">Deliveries</h2>
+        <p class="card-description">Where the PDF was sent</p></div></div>
+      {% if deliveries %}
+      {% for d in deliveries %}
+      <div class="delivery">
+        <div class="delivery-head">
+          <strong>{{ icon("mail" if d.kind == "email" else "archive") }}{{ "Email" if d.kind == "email" else "Paperless" }}</strong>
+          {{ status(d.status) }}
+        </div>
+        {% if d.kind == "email" %}<div class="muted small">{{ d.target }}</div>{% endif %}
+        {% if d.status in ("pending", "sending") %}<div class="small"><span aria-busy="true">Sending…</span></div>{% endif %}
+        {% if d.result %}<div class="small">{% if d.result_url %}<a href="{{ d.result_url }}" target="_blank" rel="noopener">{{ d.result }}</a>{% else %}{{ d.result }}{% endif %}</div>{% endif %}
+        {% if d.error %}<div class="small"><span class="error">{{ d.error }}</span></div>{% endif %}
+        {% if d.status == "failed" and job.status == "done" %}
+        <form method="post" action="/jobs/{{ job.id }}/deliveries/{{ d.id }}/retry" style="margin-top:.5rem">
+          <button class="small outline" type="submit">{{ icon("rotate-cw") }}Retry</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="muted" style="margin:0">{{ "Not sent anywhere. Download it above." if job.kind == "scan" else "Print jobs are not delivered anywhere." }}</p>
+      {% endif %}
+    </section>
+  </div>
 </section>
-<p><a href="/jobs">← All jobs</a></p>
+<p><a href="/jobs" class="btn ghost small">← All jobs</a></p>
 {% endblock %}

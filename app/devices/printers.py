@@ -9,7 +9,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote, urlparse
 
 log = logging.getLogger(__name__)
 
@@ -52,8 +52,8 @@ class CupsJobState:
 
 class PrinterBackend(Protocol):
     def list_printers(self) -> list[PrinterInfo]: ...
-    def discover(self) -> list[tuple[str, str]]: ...
     def ensure_queue(self, name: str, uri: str, label: str | None = None) -> str: ...
+    def remove_queue(self, name: str) -> None: ...
     def submit(self, printer: str, path: Path, title: str, options: dict[str, str]) -> int: ...
     def job_state(self, job_id: int) -> CupsJobState: ...
     def cancel(self, job_id: int) -> None: ...
@@ -84,27 +84,6 @@ def name_from_uri(uri: str) -> str:
         service = unquote(parsed.netloc)
         return re.split(r"\._ipps?\._tcp", service)[0]
     return parsed.hostname or uri
-
-
-def parse_lpinfo(output: str) -> list[tuple[str, str]]:
-    """Pick driverless-capable (IPP/IPPS) printers from ``lpinfo -v`` output.
-
-    Returns (label, uri) pairs, one per printer UUID, preferring plain IPP.
-    """
-    found: dict[str, tuple[str, str]] = {}
-    for line in output.splitlines():
-        parts = line.split(None, 1)
-        if len(parts) != 2:
-            continue
-        uri = parts[1].strip()
-        if not uri.startswith("dnssd://") or not re.search(r"\._ipps?\._tcp", uri):
-            continue
-        uuid = parse_qs(urlparse(uri).query).get("uuid", [uri])[0]
-        is_ipps = "._ipps._tcp" in uri
-        if uuid in found and is_ipps:
-            continue
-        found[uuid] = (name_from_uri(uri), uri)
-    return list(found.values())
 
 
 def _as_list(value) -> list:
@@ -168,16 +147,6 @@ class CupsPrinterBackend:
                 result.append(info)
             return result
 
-    def discover(self) -> list[tuple[str, str]]:
-        try:
-            proc = subprocess.run(
-                ["lpinfo", "--include-schemes", "dnssd", "-v"],
-                capture_output=True, text=True, timeout=60,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise PrinterError(f"printer discovery failed: {exc}") from exc
-        return parse_lpinfo(proc.stdout)
-
     def ensure_queue(self, name: str, uri: str, label: str | None = None) -> str:
         with self._lock:
             existing = self._conn().getPrinters().get(name)
@@ -195,6 +164,16 @@ class CupsPrinterBackend:
             raise PrinterError(f"could not add {uri}: {msg}")
         log.info("added printer queue %s -> %s", name, uri)
         return name
+
+    def remove_queue(self, name: str) -> None:
+        try:
+            proc = subprocess.run(["lpadmin", "-x", name], capture_output=True, text=True,
+                                  timeout=60)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise PrinterError(f"could not remove {name}: {exc}") from exc
+        if proc.returncode != 0:
+            raise PrinterError(f"could not remove {name}: {(proc.stderr or proc.stdout).strip()}")
+        log.info("removed printer queue %s", name)
 
     def submit(self, printer: str, path: Path, title: str, options: dict[str, str]) -> int:
         import cups
@@ -280,14 +259,15 @@ class FakePrinterBackend:
     def list_printers(self) -> list[PrinterInfo]:
         return list(self.printers.values())
 
-    def discover(self) -> list[tuple[str, str]]:
-        return []
-
     def ensure_queue(self, name: str, uri: str, label: str | None = None) -> str:
-        self.printers.setdefault(
+        info = self.printers.setdefault(
             name, PrinterInfo(name=name, uri=uri, label=label or name, state="idle")
         )
+        info.uri = uri
         return name
+
+    def remove_queue(self, name: str) -> None:
+        self.printers.pop(name, None)
 
     def submit(self, printer: str, path: Path, title: str, options: dict[str, str]) -> int:
         if printer not in self.printers:

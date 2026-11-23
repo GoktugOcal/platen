@@ -21,6 +21,7 @@ dependencies = [
     "pillow>=10.0",
     "httpx>=0.27",
     "psycopg[binary]>=3.2",
+    "zeroconf>=0.130",
 ]
 
 [project.optional-dependencies]

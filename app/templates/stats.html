@@ -2,7 +2,12 @@
 {% block title %}Statistics{% endblock %}
 {% block content %}
 <div class="viz-root">
-<h2>Statistics</h2>
+<div class="page-header">
+  <div>
+    <h1>Statistics</h1>
+    <p>Printing and scanning activity{{ ", for your own jobs" if not user.is_admin else "" }}.</p>
+  </div>
+</div>
 
 <form method="get" action="/stats" class="toolbar viz-filters">
   <select name="range" aria-label="Time range" onchange="this.form.submit()">
@@ -34,12 +39,12 @@
 </section>
 
 <div class="tiles">
-  <div class="tile"><div class="tile-label">Print jobs</div><div class="tile-value">{{ "{:,}".format(st.print_jobs) }}</div></div>
-  <div class="tile"><div class="tile-label">Pages scanned</div><div class="tile-value">{{ "{:,}".format(st.scanned_pages) }}</div>
+  <div class="tile"><div class="tile-label">Print jobs{{ icon("printer") }}</div><div class="tile-value">{{ "{:,}".format(st.print_jobs) }}</div></div>
+  <div class="tile"><div class="tile-label">Pages scanned{{ icon("scan-line") }}</div><div class="tile-value">{{ "{:,}".format(st.scanned_pages) }}</div>
     <div class="tile-sub">{{ st.scan_jobs }} scan job{{ "" if st.scan_jobs == 1 else "s" }}</div></div>
-  <div class="tile"><div class="tile-label">Paper sheets used</div><div class="tile-value">{{ "{:,}".format(st.sheets) }}</div>
+  <div class="tile"><div class="tile-label">Paper sheets used{{ icon("file-text") }}</div><div class="tile-value">{{ "{:,}".format(st.sheets) }}</div>
     <div class="tile-sub">{{ "{:,}".format(st.sheets_saved) }} saved by two-sided printing</div></div>
-  <div class="tile"><div class="tile-label">Failed jobs</div><div class="tile-value">{{ st.failed_jobs }}</div>
+  <div class="tile"><div class="tile-label">Failed jobs{{ icon("circle-alert") }}</div><div class="tile-value">{{ st.failed_jobs }}</div>
     <div class="tile-sub">{% if st.failure_rate is not none %}{{ "%.0f" | format(st.failure_rate * 100) }}% of {{ st.finished_jobs }} finished{% else %}no finished jobs{% endif %}{% if st.cancelled_jobs %} · {{ st.cancelled_jobs }} cancelled{% endif %}</div></div>
 </div>
 {% if st.unknown_page_jobs %}

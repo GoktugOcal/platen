@@ -4,21 +4,21 @@
 
 {% macro jobs_table(jobs, show_user=False) -%}
 <div class="table-wrap">
-<table class="striped">
+<table>
   <thead>
-    <tr><th>Created</th>{% if show_user %}<th>User</th>{% endif %}<th>Type</th><th>Device</th><th>File</th><th>Pages</th>
+    <tr><th>Created</th>{% if show_user %}<th>User</th>{% endif %}<th>Type</th><th>Device</th><th>File</th><th class="num">Pages</th>
         <th>Options</th><th>Status</th><th></th></tr>
   </thead>
   <tbody>
   {% for job in jobs %}
     <tr>
-      <td>{{ job.created_at | localtime }}</td>
+      <td class="muted" title="{{ job.created_at | localtime }}">{{ job.created_at | shorttime }}</td>
       {% if show_user %}<td>{{ job.user }}</td>{% endif %}
-      <td>{{ job.kind }}</td>
-      <td>{{ job.device_label or job.device }}</td>
-      <td class="wrap">{{ job.filename or "" }}</td>
-      <td>{{ job.pages if job.pages is not none else "" }}{% if job.kind == "print" and job.copies > 1 %} × {{ job.copies }}{% endif %}</td>
-      <td class="muted">
+      <td><span class="badge">{{ icon("printer" if job.kind == "print" else "scan-line", size=12) }}{{ job.kind }}</span></td>
+      <td><span class="truncate" title="{{ job.device_label or job.device }}">{{ job.device_label or job.device }}</span></td>
+      <td><span class="truncate" title="{{ job.filename or '' }}">{{ job.filename or "" }}</span></td>
+      <td class="num">{{ job.pages if job.pages is not none else "" }}{% if job.kind == "print" and job.copies > 1 %} × {{ job.copies }}{% endif %}</td>
+      <td class="muted wrap opts">
         {%- if job.kind == "print" -%}
           {{ DUPLEX_OPTIONS.get(job.duplex, "") }}{% if job.color_mode %}, {{ COLOR_OPTIONS.get(job.color_mode) }}{% endif %}
         {%- else -%}
@@ -26,10 +26,10 @@
         {%- endif -%}
       </td>
       <td>{{ status(job.status) }}</td>
-      <td><a href="{{ '/scan/' ~ job.id if job.status == 'open' else '/jobs/' ~ job.id }}">Open</a></td>
+      <td class="num"><a class="btn ghost small icon-btn" href="{{ '/scan/' ~ job.id if job.status == 'open' else '/jobs/' ~ job.id }}" title="Open job" aria-label="Open job">{{ icon("chevron-right") }}</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="9" class="muted">No jobs yet.</td></tr>
+    <tr><td colspan="9" class="empty">No jobs yet.</td></tr>
   {% endfor %}
   </tbody>
 </table>

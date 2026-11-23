@@ -4,8 +4,8 @@ from PIL import Image
 from pypdf import PdfReader
 
 from app.config import parse_entries
-from app.container_setup import airscan_conf, dll_conf
-from app.devices.printers import name_from_uri, parse_lpinfo, queue_name
+from app.container_setup import airscan_conf, dll_conf, scanner_entries
+from app.devices.printers import name_from_uri, queue_name
 from app.devices.scanners import parse_capabilities, parse_device_list
 from app.pdf import (
     build_pdf,
@@ -78,21 +78,7 @@ def test_count_pages_and_build_pdf(tmp_path):
         assert t.width == 360
 
 
-def test_parse_lpinfo():
-    out = "\n".join([
-        "network dnssd://HP%20LaserJet%20MFP%20M234dw%20(6A1E1A)._ipps._tcp.local/?uuid=u1",
-        "network dnssd://HP%20LaserJet%20MFP%20M234dw%20(6A1E1A)._ipp._tcp.local/?uuid=u1",
-        "network dnssd://HP%20LaserJet%20MFP%20M234dw%20(6A1E1A)._pdl-datastream._tcp.local/?uuid=u1",
-        "network dnssd://Other._ipps._tcp.local/?uuid=u2",
-        "network socket",
-        "direct usb",
-    ])
-    found = parse_lpinfo(out)
-    assert found == [
-        ("HP LaserJet MFP M234dw (6A1E1A)",
-         "dnssd://HP%20LaserJet%20MFP%20M234dw%20(6A1E1A)._ipp._tcp.local/?uuid=u1"),
-        ("Other", "dnssd://Other._ipps._tcp.local/?uuid=u2"),
-    ]
+def test_queue_names():
     assert queue_name("HP LaserJet MFP M234dw (6A1E1A)") == "HP_LaserJet_MFP_M234dw_6A1E1A"
     assert queue_name("###") == "printer"
     assert name_from_uri("ipp://192.168.1.5/ipp/print") == "192.168.1.5"
@@ -126,8 +112,10 @@ All options specific to device `airscan:e0:HP':
 
 
 def test_container_config():
-    conf = airscan_conf("Office=http://10.0.0.9:8080/eSCL, http://10.0.0.8/wsd", True)
+    entries = scanner_entries("Office=http://10.0.0.9:8080/eSCL, http://10.0.0.8/wsd")
+    assert entries == [("Office", "http://10.0.0.9:8080/eSCL"), ("Scanner 2", "http://10.0.0.8/wsd")]
+    conf = airscan_conf(entries)
     assert '"Office" = http://10.0.0.9:8080/eSCL, eSCL' in conf
     assert '"Scanner 2" = http://10.0.0.8/wsd, WSD' in conf
-    assert "discovery = enable" in conf
-    assert dll_conf("airscan, hpaio") .splitlines()[1:] == ["airscan", "hpaio"]
+    assert "discovery = disable" in conf
+    assert dll_conf("airscan, hpaio").splitlines()[1:] == ["airscan", "hpaio"]

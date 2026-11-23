@@ -135,7 +135,7 @@ async def printers(request: Request):
 @router.post("/printers/sync")
 async def sync_printers(request: Request):
     _admin(request)
-    return {"messages": await _svc(request).sync_printers()}
+    return {"messages": await _svc(request).sync_devices()}
 
 
 @router.get("/scanners")

@@ -66,13 +66,31 @@ async def _supply_loop(services: Services, minutes: int) -> None:
         await asyncio.sleep(minutes * 60)
 
 
-async def _initial_sync(services: Services) -> None:
-    try:
-        messages = await services.sync_printers()
-        for msg in messages:
-            log.warning("printer setup: %s", msg)
-    except Exception:  # noqa: BLE001
-        log.exception("printer setup failed")
+STARTUP_RESCAN_SECONDS = 60
+
+
+async def _device_loop(services: Services, minutes: int) -> None:
+    """Set up devices at start, again shortly after (the first mDNS answers right after
+    container start are sometimes lost), then re-run discovery periodically."""
+    first = True
+    while True:
+        try:
+            messages = await services.sync_devices()
+            for msg in messages:
+                log.warning("device setup: %s", msg)
+            found = services.last_discovery or {}
+            log.info("device sync: %d queues, discovery saw %s printer(s) and %s scanner(s)",
+                     len(services.device_origin), found.get("printers", 0),
+                     found.get("scanners", 0))
+        except Exception:  # noqa: BLE001
+            log.exception("device setup failed")
+        if first:
+            first = False
+            await asyncio.sleep(STARTUP_RESCAN_SECONDS)
+            continue
+        if minutes <= 0:
+            return
+        await asyncio.sleep(minutes * 60)
 
 
 def create_app(
@@ -80,6 +98,7 @@ def create_app(
     printers: PrinterBackend | None = None,
     scanners: ScannerBackend | None = None,
     transports: dict | None = None,
+    discoverer=None,
 ) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -88,6 +107,10 @@ def create_app(
     default_printers, default_scanners = _backends(settings)
     printers = printers or default_printers
     scanners = scanners or default_scanners
+    if discoverer is None:
+        from .discovery import FakeDiscoverer, ZeroconfDiscoverer
+
+        discoverer = FakeDiscoverer() if settings.backend == "fake" else ZeroconfDiscoverer()
     sessions = Sessions(load_secret_key(settings.secret_key, settings.data_dir))
 
     @asynccontextmanager
@@ -97,7 +120,7 @@ def create_app(
         if users.bootstrap(settings.password):
             log.info("created admin user 'admin' from PLATEN_PASSWORD")
         runner = JobRunner(db, settings, printers, scanners, PIPELINES, transports)
-        services = Services(settings, db, printers, scanners, runner)
+        services = Services(settings, db, printers, scanners, runner, discoverer)
         app.state.db = db
         app.state.users = users
         app.state.runner = runner
@@ -105,7 +128,7 @@ def create_app(
         runner.start()
         runner.recover(RESUME_PRINT)
         background = [
-            asyncio.create_task(_initial_sync(services)),
+            asyncio.create_task(_device_loop(services, settings.discovery_interval)),
             asyncio.create_task(_cleanup_loop(services)),
         ]
         if settings.supply_sample_minutes > 0 and settings.backend != "fake":

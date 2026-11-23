@@ -4,5 +4,6 @@ Copyright 2026 Göktuğ Öcal
 This product includes software developed by third parties:
 
 - htmx (https://htmx.org), BSD Zero-Clause License, vendored as app/static/htmx.min.js
-- Pico CSS (https://picocss.com), MIT License, Copyright 2019-2024 Pico,
-  vendored as app/static/pico.min.css
+- Lucide icons (https://lucide.dev), ISC License, Copyright (c) Lucide Contributors 2022
+  (portions Copyright (c) Cole Bemis 2013-2022, Feather, MIT License),
+  vendored as SVG paths in app/icons.py

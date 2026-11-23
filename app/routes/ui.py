@@ -10,7 +10,9 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from .. import __version__
 from ..auth import COOKIE_NAME, set_session_cookie
+from ..icons import icon
 from ..models import ACTIVE_STATUSES, DeliveryStatus, JobKind, JobStatus, Role, User
 from ..services import (
     COLOR_OPTIONS,
@@ -34,6 +36,17 @@ def _localtime(value: datetime | None) -> str:
     return value.astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _shorttime(value: datetime | None) -> str:
+    """Compact timestamp for tables: '23 Nov 19:27' (year added when not this year)."""
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    local = value.astimezone()
+    fmt = "%-d %b %H:%M" if local.year == datetime.now().year else "%-d %b %Y %H:%M"
+    return local.strftime(fmt)
+
+
 def _filesize(value: int | None) -> str:
     if value is None:
         return ""
@@ -47,7 +60,9 @@ def _filesize(value: int | None) -> str:
 
 templates.env.filters["localtime"] = _localtime
 templates.env.filters["filesize"] = _filesize
+templates.env.filters["shorttime"] = _shorttime
 templates.env.globals.update(
+    icon=icon, app_version=__version__,
     DUPLEX_OPTIONS=DUPLEX_OPTIONS, COLOR_OPTIONS=COLOR_OPTIONS, JobStatus=JobStatus,
     ACTIVE_STATUSES=ACTIVE_STATUSES, DeliveryStatus=DeliveryStatus,
 )
@@ -306,7 +321,11 @@ async def devices_page(request: Request):
     s = svc(request)
     printers, scanners = await asyncio.gather(s.list_printers(), s.list_scanners())
     return render(request, "devices.html", printers=printers, scanners=scanners,
-                  messages=s.device_messages, supplies=s.latest_supplies())
+                  messages=s.device_messages, supplies=s.latest_supplies(),
+                  origin=s.device_origin, scanner_source=s.scanner_source,
+                  last_discovery=s.last_discovery,
+                  discovery_enabled=s.settings.discover_printers or s.settings.scanner_discovery,
+                  discovery_interval=s.settings.discovery_interval)
 
 
 # --- statistics ------------------------------------------------------------
@@ -337,7 +356,8 @@ async def stats_page(request: Request, range: str = "30d", user: str = ""):
 async def devices_refresh(request: Request):
     require_admin(request)
     s = svc(request)
-    await asyncio.gather(s.sync_printers(), s.list_scanners(refresh=True))
+    await s.sync_devices()
+    await s.list_scanners(refresh=True)
     return redirect("/devices")
 
 

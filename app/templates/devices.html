@@ -1,56 +1,76 @@
 {% extends "base.html" %}
 {% block title %}Devices{% endblock %}
 {% block content %}
-<div class="toolbar">
-  <h2>Devices</h2>
+<div class="page-header">
+  <div>
+    <h1>Devices</h1>
+    <p>Printers and scanners Platen can reach.
+      {%- if discovery_enabled %} Platen looks for new devices on the network{% if discovery_interval %} every {{ discovery_interval }} minutes{% else %} at start{% endif %}{% if last_discovery %}; last search {{ last_discovery.at | shorttime }} found {{ last_discovery.printers }} printer{{ "" if last_discovery.printers == 1 else "s" }} and {{ last_discovery.scanners }} scanner{{ "" if last_discovery.scanners == 1 else "s" }}{% endif %}.{% endif %}</p>
+  </div>
   {% if user.is_admin %}
-  <form method="post" action="/devices/refresh" class="inline">
-    <button class="outline small" type="submit" onclick="this.setAttribute('aria-busy','true')">Search again</button>
-  </form>
+  <div class="page-actions">
+    <form method="post" action="/devices/refresh">
+      <button class="outline" type="submit" onclick="this.setAttribute('aria-busy','true')">{{ icon("refresh-cw") }}Search again</button>
+    </form>
+  </div>
   {% endif %}
 </div>
-{% for msg in messages %}<p class="error">{{ msg }}</p>{% endfor %}
+{% for msg in messages %}<p class="error">{{ icon("circle-alert") }}<span>{{ msg }}</span></p>{% endfor %}
 
-<h3>Printers</h3>
+<h2 class="section-title">{{ icon("printer") }}Printers</h2>
 {% if printers %}
-<div class="table-wrap">
-<table class="striped">
-  <thead><tr><th>Name</th><th>State</th><th>Duplex</th><th>Color</th><th>Supplies</th><th>Address</th></tr></thead>
-  <tbody>
+<div class="device-grid">
   {% for p in printers %}
-    <tr>
-      <td><strong>{{ p.label }}</strong><br><span class="muted">{{ p.make_model }}</span></td>
-      <td>{{ p.state }}{% if not p.accepting %} (not accepting){% endif %}{% if p.state_message %}<br><span class="muted">{{ p.state_message }}</span>{% endif %}</td>
-      <td>{{ "yes" if p.duplex else "no" }}</td>
-      <td>{{ "yes" if p.color else "no" }}</td>
-      <td>
-        {% set markers = p.markers or supplies.get(p.name, []) %}
-        {% for m in markers %}
-          {{ m.marker if m.marker is defined else m.name }}: {% if m.level >= 0 %}<meter min="0" max="100" value="{{ m.level }}"></meter> {{ m.level }}%{% else %}unknown{% endif %}<br>
-        {% else %}<span class="muted">not reported yet</span>{% endfor %}
-        {% if not p.markers and supplies.get(p.name) %}<small class="muted">as of {{ supplies[p.name][0].sampled_at | localtime }}</small>{% endif %}
-      </td>
-      <td class="wrap muted"><small>{{ p.uri }}</small></td>
-    </tr>
+  <section class="card device">
+    <div class="card-header">
+      <div>
+        <h3 class="card-title">{{ p.label }}</h3>
+        <p class="card-description">{{ p.make_model }}</p>
+      </div>
+      <span class="status {{ 'status-done' if p.state == 'idle' else 'status-running' if p.state == 'printing' else 'status-failed' }}">{{ p.state }}</span>
+    </div>
+    {% if not p.accepting %}<p class="error">{{ icon("circle-alert") }}<span>Not accepting jobs</span></p>{% endif %}
+    {% if p.state_message %}<p class="muted small">{{ p.state_message }}</p>{% endif %}
+    <div class="device-tags">
+      {% if origin.get(p.name) == "discovered" %}<span class="badge">{{ icon("refresh-cw", size=12) }}Auto-discovered</span>
+      {% elif origin.get(p.name) == "manual" %}<span class="badge">Configured</span>{% endif %}
+      <span class="badge">{{ "Duplex" if p.duplex else "One-sided only" }}</span>
+      <span class="badge">{{ "Color" if p.color else "Black & white" }}</span>
+    </div>
+    <div class="supplies">
+      {% set markers = p.markers or supplies.get(p.name, []) %}
+      {% for m in markers %}
+      <div class="supply">
+        <div class="supply-head"><span>{{ m.marker if m.marker is defined else m.name }}</span><strong>{% if m.level >= 0 %}{{ m.level }}%{% else %}unknown{% endif %}</strong></div>
+        {% if m.level >= 0 %}<div class="progress"><span style="width: {{ m.level }}%"></span></div>{% endif %}
+      </div>
+      {% else %}<p class="muted small">Supply levels: not reported yet</p>{% endfor %}
+      {% if not p.markers and supplies.get(p.name) %}<p class="muted small">as of {{ supplies[p.name][0].sampled_at | localtime }}</p>{% endif %}
+    </div>
+    <p class="muted small mono">{{ p.uri }}</p>
+  </section>
   {% endfor %}
-  </tbody>
-</table>
 </div>
 {% else %}
-<p class="muted">No printers yet. Set <code>PLATEN_PRINTERS</code> or make sure the printer supports IPP Everywhere / AirPrint and is on the same network.</p>
+<p class="notice">{{ icon("info") }}<span>No printers yet. Set <code>PLATEN_PRINTERS</code> or make sure the printer supports IPP Everywhere / AirPrint and is on the same network.</span></p>
 {% endif %}
 
-<h3>Scanners</h3>
+<h2 class="section-title">{{ icon("scan-line") }}Scanners</h2>
 {% if scanners %}
-<table class="striped">
-  <thead><tr><th>Name</th><th>SANE device</th></tr></thead>
-  <tbody>
+<div class="device-grid">
   {% for s in scanners %}
-    <tr><td><strong>{{ s.label }}</strong></td><td class="muted"><small>{{ s.id }}</small></td></tr>
+  <section class="card device">
+    <div class="card-header">
+      <div><h3 class="card-title">{{ s.label }}</h3><p class="card-description">SANE scanner</p></div>
+      <span class="status status-done">ready</span>
+    </div>
+    {% set src = scanner_source(s.id) %}
+    {% if src %}<div class="device-tags"><span class="badge">{% if src == "discovered" %}{{ icon("refresh-cw", size=12) }}Auto-discovered{% else %}Configured{% endif %}</span></div>{% endif %}
+    <p class="muted small mono">{{ s.id }}</p>
+  </section>
   {% endfor %}
-  </tbody>
-</table>
+</div>
 {% else %}
-<p class="muted">No scanners found. Set <code>PLATEN_SCANNERS</code> (e.g. <code>MyScanner=http://192.168.1.50:8080/eSCL</code>) if discovery does not work.</p>
+<p class="notice">{{ icon("info") }}<span>No scanners found. Set <code>PLATEN_SCANNERS</code> (e.g. <code>MyScanner=http://192.168.1.50:8080/eSCL</code>) if discovery does not work.</span></p>
 {% endif %}
 {% endblock %}

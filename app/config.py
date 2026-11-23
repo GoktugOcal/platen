@@ -61,11 +61,21 @@ class Settings(BaseSettings):
 
     # Printers: "ipp://host/ipp/print" or "Name=ipp://host/ipp/print", comma-separated.
     printers: str = ""
-    # Find IPP Everywhere printers via mDNS when no printers are configured.
+    # Find IPP Everywhere / AirPrint printers on the network (mDNS), in addition to
+    # the ones listed in PLATEN_PRINTERS.
     discover_printers: bool = True
     # Scanners for sane-airscan: "Name=http://host:8080/eSCL", comma-separated.
     scanners: str = ""
+    # Find eSCL (AirScan) scanners on the network (mDNS), in addition to PLATEN_SCANNERS.
     scanner_discovery: bool = True
+    # Minutes between network discovery runs (0 = only at start and on "Search again").
+    discovery_interval: int = 10
+    # Seconds to listen for mDNS answers per run.
+    discovery_timeout: float = 5.0
+    # Remove auto-discovered printers that have not been seen for this many hours.
+    discovery_forget_hours: int = 24
+    # Where sane-airscan reads its config (the app rewrites airscan.conf).
+    sane_config_dir: Path = Path("/etc/sane.d")
     # SANE backends to enable (written to /etc/sane.d/dll.conf in the container).
     sane_backends: str = "airscan"
 
