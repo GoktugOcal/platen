@@ -22,7 +22,7 @@ ALL_OFFICE_EXTENSIONS = sorted(set().union(*OFFICE_EXTENSIONS.values()))
 
 
 def detect_office(head: bytes, filename: str) -> str | None:
-    """Return the file extension if this is an Office document Gotenberg can convert."""
+    """Return the file extension if this is an Office document LibreOffice can convert."""
     ext = Path(filename).suffix.lower()
     for magic, extensions in OFFICE_EXTENSIONS.items():
         if head.startswith(magic) and ext in extensions:

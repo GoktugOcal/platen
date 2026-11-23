@@ -20,6 +20,17 @@ RUN apt-get update \
  && sed -i -E 's/^SystemGroup .*/SystemGroup root lpadmin/' /etc/cups/cups-files.conf \
  && printf 'ErrorLog stderr\n' >> /etc/cups/cups-files.conf
 
+# PLATEN_OFFICE=true builds the "-office" image: headless LibreOffice (about +390 MB)
+# for printing Office documents. Platen runs it only while converting a file.
+ARG PLATEN_OFFICE=false
+RUN if [ "$PLATEN_OFFICE" = "true" ]; then \
+      apt-get update \
+   && apt-get install -y --no-install-recommends \
+        libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui \
+        fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu-core \
+   && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 COPY docker/cupsd.conf /etc/cups/cupsd.conf
 
 WORKDIR /opt/platen

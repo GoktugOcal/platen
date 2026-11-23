@@ -27,8 +27,17 @@ jobs:
         run: docker build --target test .
 
   image:
-    name: Publish image
+    name: Publish image (${{ matrix.variant }})
     needs: test
+    strategy:
+      matrix:
+        include:
+          - variant: standard
+            office: "false"
+            suffix: ""
+          - variant: office
+            office: "true"
+            suffix: "-office"
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
@@ -47,6 +56,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: |
+            suffix=${{ matrix.suffix }},onlatest=true
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -56,9 +67,10 @@ jobs:
         with:
           context: .
           target: app
+          build-args: PLATEN_OFFICE=${{ matrix.office }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}

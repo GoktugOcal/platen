@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import smtplib
+import shutil
+import time
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 
 from app.main import create_app
 
@@ -242,15 +245,84 @@ def test_paperless_fields_fragment(tmp_path, printers, scanners):
         assert "Bank" in html and "taxes" in html
 
 
-# --- Office documents via Gotenberg -------------------------------------------------
+# --- Office documents ---------------------------------------------------------------
 
 DOCX = b"PK\x03\x04" + b"\x00" * 64
 
 
-def test_office_rejected_without_gotenberg(client):
+def test_office_rejected_without_converter(client):
+    assert ".docx" not in client.get("/print").text
     r = client.post("/api/print", files={"file": ("letter.docx", DOCX)},
                     data={"printer": "Fake_Printer"})
-    assert r.status_code == 415 and "Gotenberg" in r.json()["detail"]
+    assert r.status_code == 415 and "office image" in r.json()["detail"]
+
+
+def fake_soffice(tmp_path, body: str) -> str:
+    """A stand-in for LibreOffice's soffice; ``body`` runs with $src and $outdir set."""
+    script = tmp_path / "bin" / "soffice"
+    script.parent.mkdir(exist_ok=True)
+    script.write_text(
+        "#!/bin/sh\n"
+        'echo "$@" > "$(dirname "$0")/args"\n'
+        'while [ $# -gt 1 ]; do [ "$1" = --outdir ] && { outdir="$2"; shift; }; shift; done\n'
+        'src="$1"; name=$(basename "$src")\n' + body + "\n")
+    script.chmod(0o755)
+    return str(script)
+
+
+def test_office_converted_with_local_libreoffice(tmp_path, printers, scanners):
+    fixture = tmp_path / "fixture.pdf"
+    fixture.write_bytes(pdf_bytes(4))
+    soffice = fake_soffice(tmp_path, f'cp "{fixture}" "$outdir/${{name%.*}}.pdf"')
+    settings = make_settings(tmp_path, libreoffice=soffice)
+    assert settings.office_backend == "libreoffice"
+    with TestClient(create_app(settings, printers, scanners)) as c:
+        login(c)
+        assert ".docx" in c.get("/print").text
+        r = c.post("/api/print", files={"file": ("letter.docx", DOCX)},
+                   data={"printer": "Fake_Printer"})
+        assert r.status_code == 202, r.text
+        job = wait_for(c, r.json()["id"])
+        assert job["status"] == "done" and job["pages"] == 4
+        assert printers.jobs[job["cups_job_id"]]["path"].endswith("converted.pdf")
+    args = (tmp_path / "bin" / "args").read_text()
+    assert "--headless" in args and "--convert-to pdf" in args
+    assert f"-env:UserInstallation=file://{tmp_path}/cache/libreoffice" in args
+
+
+def test_office_local_conversion_errors(tmp_path, printers, scanners):
+    failing = fake_soffice(tmp_path, 'echo "Error: source file could not be loaded"; exit 1')
+    settings = make_settings(tmp_path, libreoffice=failing)
+    with TestClient(create_app(settings, printers, scanners)) as c:
+        login(c)
+        r = c.post("/api/print", files={"file": ("bad.odt", DOCX)},
+                   data={"printer": "Fake_Printer"})
+        job = wait_for(c, r.json()["id"])
+        assert job["status"] == "failed"
+        assert "LibreOffice exit 1" in job["error"] and "could not be loaded" in job["error"]
+
+
+def test_office_local_conversion_timeout(tmp_path):
+    from app.convert import ConversionError, convert_libreoffice
+
+    soffice = fake_soffice(tmp_path, "sleep 30")
+    src = tmp_path / "slow.docx"
+    src.write_bytes(DOCX)
+    started = time.monotonic()
+    with pytest.raises(ConversionError, match="timed out"):
+        convert_libreoffice(soffice, src, tmp_path / "out.pdf", tmp_path / "profile", timeout=1)
+    assert time.monotonic() - started < 10
+
+
+@pytest.mark.skipif(shutil.which("soffice") is None, reason="LibreOffice not installed")
+def test_office_real_libreoffice(tmp_path):
+    from app.convert import convert_libreoffice
+
+    src = tmp_path / "letter.rtf"
+    src.write_text(r"{\rtf1\ansi Hello from Platen.\par\page Second page.\par}")
+    out = tmp_path / "letter.pdf"
+    convert_libreoffice("soffice", src, out, tmp_path / "profile", timeout=120)
+    assert len(PdfReader(str(out)).pages) == 2
 
 
 def test_office_converted_with_gotenberg(tmp_path, printers, scanners):

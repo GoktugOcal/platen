@@ -22,8 +22,8 @@ printer drivers or protocol code.
 - **Send scans** by email (SMTP, e.g. Gmail) and/or to **Paperless-ngx**, with title, tags,
   correspondent and document type chosen at scan time. Failed deliveries can be retried, and
   the PDF always stays downloadable.
-- **Office documents** (docx, xlsx, pptx, odt, …) print through an optional Gotenberg
-  sidecar.
+- **Office documents** (docx, xlsx, pptx, odt, …) print with the bundled LibreOffice in the
+  optional `-office` image.
 - **Users**: local accounts with admin and user roles. Users only see their own jobs.
   Admins can limit which printers each user may use. Each user gets a personal API token
   and their own Paperless token, so documents are owned by the right Paperless user.
@@ -77,7 +77,10 @@ All settings are environment variables (see `.env.example`):
 | `PLATEN_PAPERLESS_URL` | *(empty)* | Paperless-ngx base URL; enables "Send to Paperless" |
 | `PLATEN_PAPERLESS_TOKEN` | *(empty)* | Fallback token for users who have not set their own |
 | `PLATEN_PAPERLESS_WAIT` | `120` | Seconds to wait for Paperless to finish consuming |
-| `PLATEN_GOTENBERG_URL` | *(empty)* | Enables Office documents, e.g. `http://127.0.0.1:3100` |
+| `PLATEN_OFFICE` | `false` | Build-time: `true` bundles LibreOffice for Office documents |
+| `PLATEN_LIBREOFFICE` | `soffice` | LibreOffice command; empty turns local conversion off |
+| `PLATEN_OFFICE_TIMEOUT` | `180` | Seconds allowed per document conversion |
+| `PLATEN_GOTENBERG_URL` | *(empty)* | Use an existing Gotenberg instead, e.g. `http://127.0.0.1:3100` |
 | `PLATEN_QUOTA_MODE` | `block` | `block` refuses jobs over a user's quota; `warn` only shows usage |
 | `PLATEN_SUPPLY_SAMPLE_MINUTES` | `360` | How often toner levels are recorded for the dashboard (0 = off) |
 | `PLATEN_TRUSTED_PROXIES` | `127.0.0.1` | Proxies whose `X-Forwarded-*` headers are trusted (see Remote access) |
@@ -174,12 +177,18 @@ on the job page.
 ## Office documents (optional)
 
 ```bash
-echo 'PLATEN_GOTENBERG_URL=http://127.0.0.1:3100' >> .env
-docker compose --profile office up -d
+echo 'PLATEN_OFFICE=true' >> .env
+docker compose up -d --build
 ```
 
-Gotenberg (LibreOffice) is a large image, about 1.5 GB, and uses several hundred MB of RAM
-while converting, so it is off by default.
+This bundles a headless LibreOffice in the Platen image (about 390 MB more; prebuilt as
+`ghcr.io/goktugocal/platen:<version>-office`). Nothing extra runs in the background:
+Platen starts LibreOffice only while converting a file, one file at a time, so memory is
+only used during a conversion. Common Microsoft fonts are replaced by metric-compatible
+ones (Liberation, Carlito, Caladea), so layouts stay the same.
+
+If you already run [Gotenberg](https://gotenberg.dev), set `PLATEN_GOTENBERG_URL` instead
+and use the standard image.
 
 ## How it is built
 

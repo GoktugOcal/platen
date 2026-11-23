@@ -3,6 +3,9 @@ services:
     build:
       context: .
       target: app
+      args:
+        # true = bundle LibreOffice for printing Office documents (about +390 MB)
+        PLATEN_OFFICE: ${PLATEN_OFFICE:-false}
     image: platen:latest
     container_name: platen
     # Host networking lets CUPS and sane-airscan find printers/scanners via mDNS.
@@ -19,18 +22,6 @@ services:
       - platen-data:/data
       # D-Bus is used to reach the host's avahi-daemon for mDNS discovery.
       - /run/dbus:/run/dbus
-
-  # Optional: printing Office documents (docx, xlsx, odt, ...).
-  # Start with:  docker compose --profile office up -d
-  # and set PLATEN_GOTENBERG_URL=http://127.0.0.1:3100 in .env
-  gotenberg:
-    image: gotenberg/gotenberg:8
-    container_name: platen-gotenberg
-    profiles: [office]
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3100:3000"
-    mem_limit: 768m
 
 volumes:
   platen-data:

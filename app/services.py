@@ -384,8 +384,8 @@ class Services:
         if office_ext:
             if not self.settings.office_enabled:
                 raise ServiceError(
-                    "Office documents need the Gotenberg add-on. Export to PDF and upload "
-                    "that, or ask the admin to enable it.", 415)
+                    "Office documents need the Platen office image. Export to PDF and "
+                    "upload that, or ask the admin to switch images.", 415)
             path = job_dir / f"input{office_ext}"
         else:
             file_type = detect_type(head)

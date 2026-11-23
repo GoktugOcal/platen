@@ -13,7 +13,7 @@ import json
 import logging
 from pathlib import Path
 
-from ..convert import convert_office
+from ..convert import convert_gotenberg, convert_libreoffice
 from ..delivery import EmailError, PaperlessClient, PaperlessError, send_pdf
 from ..devices import PrinterError
 from ..models import Delivery, DeliveryKind, DeliveryStatus, JobStatus, utcnow
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 # --- print -------------------------------------------------------------------
 
 async def convert_document(ctx: JobContext) -> None:
-    """Office documents become PDF through Gotenberg; other files pass through."""
+    """Office documents become PDF (local LibreOffice or Gotenberg); other files pass through."""
     job = ctx.job()
     src = Path(job.file_path)
     with src.open("rb") as fh:
@@ -35,10 +35,14 @@ async def convert_document(ctx: JobContext) -> None:
     if not detect_office(head, src.name):
         return
     out = ctx.job_dir / "converted.pdf"
-    await asyncio.to_thread(
-        convert_office, ctx.settings.gotenberg_url, src, out, ctx.settings.gotenberg_timeout,
-        ctx.transports.get("gotenberg"),
-    )
+    settings = ctx.settings
+    if settings.office_backend == "gotenberg":
+        await asyncio.to_thread(convert_gotenberg, settings.gotenberg_url, src, out,
+                                settings.office_timeout, ctx.transports.get("gotenberg"))
+    else:
+        await asyncio.to_thread(convert_libreoffice, settings.libreoffice, src, out,
+                                settings.data_dir / "cache" / "libreoffice",
+                                settings.office_timeout)
     ctx.update(file_path=str(out))
 
 

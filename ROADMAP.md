@@ -9,7 +9,7 @@ accounting**, on top of the deliveries, statistics and quotas Platen already has
 
 **Constraints for every release:**
 - Stays light enough for a Raspberry Pi: no new always-on services in the default setup.
-- Optional heavy parts (Gotenberg, OCR) are off by default.
+- Optional heavy parts (LibreOffice for Office files, OCR) are off by default.
 - No external identity provider.
 - Remote access stays the user's choice.
 - Database changes go through the `schema_version` migrations, and upgrades from any

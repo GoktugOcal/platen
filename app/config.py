@@ -55,9 +55,12 @@ class Settings(BaseSettings):
     paperless_token: str = ""
     paperless_wait: int = 120          # seconds to wait for Paperless to consume a document
 
-    # Gotenberg (optional sidecar) for printing Office documents.
+    # Office documents (docx, xlsx, odt, ...) -> PDF. The platen "-office" image bundles
+    # LibreOffice, which Platen runs only while converting. Set PLATEN_LIBREOFFICE="" to
+    # turn that off. Alternatively point PLATEN_GOTENBERG_URL at an existing Gotenberg.
+    libreoffice: str = "soffice"
     gotenberg_url: str = ""
-    gotenberg_timeout: int = 180
+    office_timeout: int = 180
 
     # Printers: "ipp://host/ipp/print" or "Name=ipp://host/ipp/print", comma-separated.
     printers: str = ""
@@ -107,8 +110,16 @@ class Settings(BaseSettings):
         return bool(self.paperless_url)
 
     @property
+    def office_backend(self) -> str | None:
+        """How Office documents are converted: "gotenberg", "libreoffice" or None."""
+        if self.gotenberg_url:
+            return "gotenberg"
+        from .convert import libreoffice_available
+        return "libreoffice" if libreoffice_available(self.libreoffice) else None
+
+    @property
     def office_enabled(self) -> bool:
-        return bool(self.gotenberg_url)
+        return self.office_backend is not None
 
     @property
     def jobs_dir(self) -> Path:
