@@ -285,8 +285,11 @@ class Services:
         job = self.get_job(job_id, user)
         if job.status in FINAL_STATUSES:
             raise ServiceError(f"Job is already {job.status}", 409)
-        # The runner notices the status change; wait_print also cancels in CUPS.
         job = self.db.update_job(job_id, status=JobStatus.CANCELLED, finished_at=utcnow())
+        if job.cups_job_id:
+            # Stop the printer now rather than at the runner's next poll (which also
+            # cancels, harmlessly, as a fallback).
+            await asyncio.to_thread(self.printers.cancel, job.cups_job_id)
         if job.kind == JobKind.SCAN:
             self._purge(job)
         return job
