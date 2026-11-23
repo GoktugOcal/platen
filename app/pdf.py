@@ -10,6 +10,25 @@ PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 EXTENSIONS = {"pdf": ".pdf", "jpeg": ".jpg", "png": ".png", "text": ".txt"}
 
+ZIP_MAGIC = b"PK\x03\x04"            # docx/xlsx/pptx/odt/ods/odp
+OLE_MAGIC = b"\xd0\xcf\x11\xe0"      # doc/xls/ppt
+RTF_MAGIC = b"{\\rtf"
+OFFICE_EXTENSIONS = {
+    ZIP_MAGIC: {".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"},
+    OLE_MAGIC: {".doc", ".xls", ".ppt"},
+    RTF_MAGIC: {".rtf"},
+}
+ALL_OFFICE_EXTENSIONS = sorted(set().union(*OFFICE_EXTENSIONS.values()))
+
+
+def detect_office(head: bytes, filename: str) -> str | None:
+    """Return the file extension if this is an Office document Gotenberg can convert."""
+    ext = Path(filename).suffix.lower()
+    for magic, extensions in OFFICE_EXTENSIONS.items():
+        if head.startswith(magic) and ext in extensions:
+            return ext
+    return None
+
 _RANGE_RE = re.compile(r"^\s*\d+\s*(-\s*\d+\s*)?(,\s*\d+\s*(-\s*\d+\s*)?)*$")
 
 

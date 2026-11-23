@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .auth import AuthMiddleware, Authenticator, load_secret_key
+from .auth import AuthMiddleware, Sessions, load_secret_key
 from .config import Settings, get_settings
 from .db import Database
 from .devices import (
@@ -24,8 +24,9 @@ from .devices import (
     ScannerBackend,
 )
 from .jobs import PIPELINES, RESUME_PRINT, JobRunner
-from .routes import api, ui
+from .routes import account, admin, api, ui
 from .services import ServiceError, Services
+from .users import LoginThrottle, UserError, UserService
 
 log = logging.getLogger("platen")
 APP_DIR = Path(__file__).parent
@@ -67,6 +68,7 @@ def create_app(
     settings: Settings | None = None,
     printers: PrinterBackend | None = None,
     scanners: ScannerBackend | None = None,
+    transports: dict | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -75,16 +77,18 @@ def create_app(
     default_printers, default_scanners = _backends(settings)
     printers = printers or default_printers
     scanners = scanners or default_scanners
-    authenticator = Authenticator(
-        settings.password, load_secret_key(settings.secret_key, settings.data_dir)
-    )
+    sessions = Sessions(load_secret_key(settings.secret_key, settings.data_dir))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        db = Database(settings.db_path)
-        runner = JobRunner(db, settings, printers, scanners, PIPELINES)
+        db = Database(settings.db_url)
+        users = UserService(db)
+        if users.bootstrap(settings.password):
+            log.info("created admin user 'admin' from PLATEN_PASSWORD")
+        runner = JobRunner(db, settings, printers, scanners, PIPELINES, transports)
         services = Services(settings, db, printers, scanners, runner)
         app.state.db = db
+        app.state.users = users
         app.state.runner = runner
         app.state.services = services
         runner.start()
@@ -93,8 +97,8 @@ def create_app(
             asyncio.create_task(_initial_sync(services)),
             asyncio.create_task(_cleanup_loop(services)),
         ]
-        if not settings.password:
-            log.warning("PLATEN_PASSWORD is not set: anyone who can reach this port can use it")
+        if users.needs_setup:
+            log.warning("no users yet: open the web UI and create the first admin at /setup")
         try:
             yield
         finally:
@@ -105,17 +109,26 @@ def create_app(
 
     app = FastAPI(title="Platen", version=__version__, lifespan=lifespan)
     app.state.settings = settings
-    app.state.auth = authenticator
-    app.add_middleware(AuthMiddleware, authenticator=authenticator)
+    app.state.sessions = sessions
+    app.state.login_throttle = LoginThrottle()
+    app.add_middleware(AuthMiddleware)
     app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
     app.include_router(api.router)
+    app.include_router(account.router)
+    app.include_router(admin.router)
     app.include_router(ui.router)
 
     @app.exception_handler(ServiceError)
     async def _service_error(request: Request, exc: ServiceError):
         if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": exc.message}, status_code=exc.status_code)
-        return ui.render_error(request, exc)
+        return ui.render_error(request, exc.message, exc.status_code)
+
+    @app.exception_handler(UserError)
+    async def _user_error(request: Request, exc: UserError):
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": exc.message}, status_code=exc.status_code)
+        return ui.render_error(request, exc.message, exc.status_code)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz(request: Request):

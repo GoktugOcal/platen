@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h2>Users</h2>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<div class="table-wrap">
+<table class="striped">
+  <thead><tr><th>Username</th><th>Role</th><th>Email</th><th>Printers</th><th>Status</th><th>Last login</th><th></th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td><strong>{{ u.username }}</strong></td>
+      <td>{{ u.role }}</td>
+      <td>{{ u.email }}</td>
+      <td class="wrap">{{ u.printer_list | join(", ") if u.printer_list else "all" }}</td>
+      <td>{{ "active" if u.active else "disabled" }}</td>
+      <td>{{ u.last_login_at | localtime }}</td>
+      <td><a href="/admin/users/{{ u.id }}">Edit</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<article>
+  <h3>Add a user</h3>
+  <form method="post" action="/admin/users">
+    <div class="grid-2">
+      <label>Username <input type="text" name="username" value="{{ form.username or '' }}" autocapitalize="none" required></label>
+      <label>Email <input type="email" name="email" value="{{ form.email or '' }}"></label>
+      <label>Password <span class="muted">(min. 8)</span> <input type="password" name="password" minlength="8" autocomplete="new-password" required></label>
+      <label>Role
+        <select name="role">
+          <option value="user" {% if form.role != "admin" %}selected{% endif %}>User</option>
+          <option value="admin" {% if form.role == "admin" %}selected{% endif %}>Admin</option>
+        </select>
+      </label>
+    </div>
+    {% if printers | length > 1 %}
+    <fieldset>
+      <legend>Printers <span class="muted">(none ticked = all printers)</span></legend>
+      {% for p in printers %}
+      <label><input type="checkbox" name="allowed_printers" value="{{ p.name }}"> {{ p.label }}</label>
+      {% endfor %}
+    </fieldset>
+    {% endif %}
+    <button type="submit">Add user</button>
+  </form>
+</article>
+{% endblock %}

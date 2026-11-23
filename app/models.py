@@ -68,6 +68,74 @@ class Job(SQLModel, table=True):
         return self.status in ACTIVE_STATUSES
 
 
+class Role(StrEnum):
+    ADMIN = "admin"
+    USER = "user"
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "users"
+
+    id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(index=True, unique=True)
+    password_hash: str
+    role: str = Role.USER
+    email: str = ""
+    paperless_token: str = ""
+    allowed_printers: str = ""        # comma-separated CUPS queue names; empty = all
+    api_token_hash: str = Field(default="", index=True)
+    session_epoch: int = 0            # bump to invalidate existing sessions
+    active: bool = True
+    created_at: datetime = Field(default_factory=utcnow)
+    last_login_at: datetime | None = None
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == Role.ADMIN
+
+    @property
+    def printer_list(self) -> list[str]:
+        return [p.strip() for p in self.allowed_printers.split(",") if p.strip()]
+
+    def may_use_printer(self, name: str) -> bool:
+        allowed = self.printer_list
+        return not allowed or name in allowed
+
+
+class DeliveryKind(StrEnum):
+    EMAIL = "email"
+    PAPERLESS = "paperless"
+
+
+class DeliveryStatus(StrEnum):
+    PENDING = "pending"
+    SENDING = "sending"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class Delivery(SQLModel, table=True):
+    id: str = Field(default_factory=new_id, primary_key=True)
+    job_id: str = Field(foreign_key="job.id", index=True)
+    kind: str
+    target: str = ""                  # email address or Paperless URL
+    options: str = "{}"               # JSON: title, tags, correspondent, document_type
+    status: str = DeliveryStatus.PENDING
+    error: str | None = None
+    result: str | None = None         # human-readable outcome
+    result_url: str | None = None     # e.g. link to the Paperless document
+    attempts: int = 0
+    created_at: datetime = Field(default_factory=utcnow)
+    finished_at: datetime | None = None
+
+
+class SchemaVersion(SQLModel, table=True):
+    __tablename__ = "schema_version"
+
+    id: int = Field(default=1, primary_key=True)
+    version: int = 0
+
+
 class ScanPage(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
     job_id: str = Field(foreign_key="job.id", index=True)

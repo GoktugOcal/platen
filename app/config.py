@@ -32,10 +32,32 @@ class Settings(BaseSettings):
     port: int = 8631
     data_dir: Path = Path("/data")
 
-    # Single-user login. Empty means no authentication (trusted LAN only).
+    # Database. Empty means SQLite in data_dir; Postgres: postgresql+psycopg://user:pw@host/db
+    database_url: str = ""
+
+    # Bootstrap: when no users exist yet, create admin "admin" with this password.
+    # Without it, the first visit shows a one-time /setup page.
     password: str = ""
     # Cookie signing key. Generated into data_dir/secret_key when empty.
     secret_key: str = ""
+
+    # Scan-to-email (SMTP). Gmail: smtp.gmail.com, 587, starttls, app password.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_security: str = "starttls"   # starttls | ssl | none
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""                # defaults to smtp_user
+    email_max_mb: float = 18           # ~24 MB once base64-encoded (Gmail limit: 25 MB)
+
+    # Paperless-ngx. Users can set their own API token on the account page.
+    paperless_url: str = ""
+    paperless_token: str = ""
+    paperless_wait: int = 120          # seconds to wait for Paperless to consume a document
+
+    # Gotenberg (optional sidecar) for printing Office documents.
+    gotenberg_url: str = ""
+    gotenberg_timeout: int = 180
 
     # Printers: "ipp://host/ipp/print" or "Name=ipp://host/ipp/print", comma-separated.
     printers: str = ""
@@ -58,8 +80,20 @@ class Settings(BaseSettings):
     backend: str = "real"
 
     @property
-    def db_path(self) -> Path:
-        return self.data_dir / "platen.db"
+    def db_url(self) -> str:
+        return self.database_url or f"sqlite:///{self.data_dir / 'platen.db'}"
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.smtp_host)
+
+    @property
+    def paperless_enabled(self) -> bool:
+        return bool(self.paperless_url)
+
+    @property
+    def office_enabled(self) -> bool:
+        return bool(self.gotenberg_url)
 
     @property
     def jobs_dir(self) -> Path:

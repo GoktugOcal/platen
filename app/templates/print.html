@@ -5,11 +5,11 @@
 <h2>Print a file</h2>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 {% if not printers %}
-  <p class="notice">No printers are set up yet. Check the <a href="/devices">Devices</a> page.</p>
+  <p class="notice">No printers are available to you. Check the <a href="/devices">Devices</a> page{% if not user.is_admin %} or ask an admin{% endif %}.</p>
 {% else %}
 <form method="post" action="/print" enctype="multipart/form-data">
-  <label>File (PDF, JPEG, PNG or plain text)
-    <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain" required>
+  <label>File ({{ "PDF, Office documents, images or plain text" if features.office else "PDF, JPEG, PNG or plain text" }})
+    <input type="file" name="file" accept="{{ accept }}" required>
   </label>
   <div class="grid-2">
     <label>Printer

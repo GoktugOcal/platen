@@ -2,17 +2,18 @@
 <span class="status status-{{ value }}">{{ value }}</span>
 {%- endmacro %}
 
-{% macro jobs_table(jobs) -%}
+{% macro jobs_table(jobs, show_user=False) -%}
 <div class="table-wrap">
 <table class="striped">
   <thead>
-    <tr><th>Created</th><th>Type</th><th>Device</th><th>File</th><th>Pages</th>
+    <tr><th>Created</th>{% if show_user %}<th>User</th>{% endif %}<th>Type</th><th>Device</th><th>File</th><th>Pages</th>
         <th>Options</th><th>Status</th><th></th></tr>
   </thead>
   <tbody>
   {% for job in jobs %}
     <tr>
       <td>{{ job.created_at | localtime }}</td>
+      {% if show_user %}<td>{{ job.user }}</td>{% endif %}
       <td>{{ job.kind }}</td>
       <td>{{ job.device_label or job.device }}</td>
       <td class="wrap">{{ job.filename or "" }}</td>
@@ -28,7 +29,7 @@
       <td><a href="{{ '/scan/' ~ job.id if job.status == 'open' else '/jobs/' ~ job.id }}">Open</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="8" class="muted">No jobs yet.</td></tr>
+    <tr><td colspan="9" class="muted">No jobs yet.</td></tr>
   {% endfor %}
   </tbody>
 </table>

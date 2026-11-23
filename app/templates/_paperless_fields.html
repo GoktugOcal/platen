@@ -1,0 +1,28 @@
+{% if error %}
+<p class="error" role="alert">Paperless: {{ error }}</p>
+{% else %}
+<label>Title <span class="muted">(optional; Paperless picks one if empty)</span>
+  <input type="text" name="pl_title" maxlength="128">
+</label>
+<div class="grid-2">
+  <label>Correspondent
+    <select name="pl_correspondent">
+      <option value="">Let Paperless decide</option>
+      {% for c in meta.correspondents %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Document type
+    <select name="pl_document_type">
+      <option value="">Let Paperless decide</option>
+      {% for d in meta.document_types %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+    </select>
+  </label>
+</div>
+{% if meta.tags %}
+<label>Tags <span class="muted">(hold Ctrl/⌘ to pick several)</span>
+  <select name="pl_tags" multiple size="{{ [meta.tags | length, 6] | min }}">
+    {% for t in meta.tags %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+  </select>
+</label>
+{% endif %}
+{% endif %}

@@ -10,7 +10,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,8 @@ class JobContext:
     settings: Settings
     printers: PrinterBackend
     scanners: ScannerBackend
+    # Optional httpx transports per integration ("paperless", "gotenberg"); tests inject mocks.
+    transports: dict[str, Any] = field(default_factory=dict)
 
     def job(self) -> Job:
         job = self.db.get_job(self.job_id)
@@ -59,12 +61,14 @@ class JobRunner:
         printers: PrinterBackend,
         scanners: ScannerBackend,
         pipelines: dict[str, list[Step]],
+        transports: dict[str, Any] | None = None,
     ) -> None:
         self.db = db
         self.settings = settings
         self.printers = printers
         self.scanners = scanners
         self.pipelines = pipelines
+        self.transports = transports or {}
         self._sem = asyncio.Semaphore(settings.max_concurrent_jobs)
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._tasks: set[asyncio.Task] = set()
@@ -79,7 +83,8 @@ class JobRunner:
         return self._locks[device]
 
     def context(self, job_id: str) -> JobContext:
-        return JobContext(job_id, self.db, self.settings, self.printers, self.scanners)
+        return JobContext(job_id, self.db, self.settings, self.printers, self.scanners,
+                          self.transports)
 
     def start(self) -> None:
         self._running = True
@@ -92,6 +97,13 @@ class JobRunner:
 
     def submit(self, job_id: str, steps: list[Step] | None = None) -> asyncio.Task:
         task = asyncio.create_task(self._run(job_id, steps), name=f"job-{job_id}")
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    def spawn(self, coro: Awaitable[None], name: str) -> asyncio.Task:
+        """Run extra background work (e.g. a delivery retry) tracked for shutdown."""
+        task = asyncio.create_task(coro, name=name)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return task

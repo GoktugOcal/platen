@@ -3,9 +3,11 @@
 {% block content %}
 <div class="toolbar">
   <h2>Devices</h2>
+  {% if user.is_admin %}
   <form method="post" action="/devices/refresh" class="inline">
     <button class="outline small" type="submit" onclick="this.setAttribute('aria-busy','true')">Search again</button>
   </form>
+  {% endif %}
 </div>
 {% for msg in messages %}<p class="error">{{ msg }}</p>{% endfor %}
 

@@ -14,15 +14,17 @@
     <nav>
       <ul><li><a href="/" class="brand"><strong>Platen</strong></a></li></ul>
       {% set path = request.url.path %}
+      {% if user %}
       <ul>
         <li><a href="/print" {% if path.startswith('/print') %}aria-current="page"{% endif %}>Print</a></li>
         <li><a href="/scan" {% if path.startswith('/scan') %}aria-current="page"{% endif %}>Scan</a></li>
         <li><a href="/jobs" {% if path.startswith('/jobs') %}aria-current="page"{% endif %}>Jobs</a></li>
         <li><a href="/devices" {% if path.startswith('/devices') %}aria-current="page"{% endif %}>Devices</a></li>
-        {% if auth_enabled %}
+        {% if user.is_admin %}<li><a href="/admin/users" {% if path.startswith('/admin') %}aria-current="page"{% endif %}>Users</a></li>{% endif %}
+        <li><a href="/account" {% if path.startswith('/account') %}aria-current="page"{% endif %}>{{ user.username }}</a></li>
         <li><form method="post" action="/logout" class="inline"><button class="outline secondary small">Log out</button></form></li>
-        {% endif %}
       </ul>
+      {% endif %}
     </nav>
   </header>
   <main class="container">

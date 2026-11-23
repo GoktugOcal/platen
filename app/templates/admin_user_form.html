@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ target.username }}{% endblock %}
+{% block content %}
+<h2>Edit user: {{ target.username }}</h2>
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/admin/users/{{ target.id }}">
+  <div class="grid-2">
+    <label>Role
+      <select name="role">
+        <option value="user" {% if target.role == "user" %}selected{% endif %}>User</option>
+        <option value="admin" {% if target.role == "admin" %}selected{% endif %}>Admin</option>
+      </select>
+    </label>
+    <label>Email <input type="email" name="email" value="{{ target.email }}"></label>
+    <label>New password <span class="muted">(leave empty to keep)</span>
+      <input type="password" name="password" minlength="8" autocomplete="new-password">
+    </label>
+  </div>
+  <label><input type="checkbox" name="active" value="1" {% if target.active %}checked{% endif %}> Active (can log in)</label>
+  {% if printers %}
+  <fieldset>
+    <legend>Printers <span class="muted">(none ticked = all printers)</span></legend>
+    {% for p in printers %}
+    <label><input type="checkbox" name="allowed_printers" value="{{ p.name }}" {% if p.name in target.printer_list %}checked{% endif %}> {{ p.label }}</label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+  <button type="submit">Save</button>
+</form>
+<p class="muted">Changing the password or disabling the account logs the user out everywhere.</p>
+<p><a href="/admin/users">← All users</a></p>
+{% endblock %}

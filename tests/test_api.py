@@ -6,7 +6,7 @@ import io
 
 from app.main import create_app
 
-from .conftest import make_settings, pdf_bytes, wait_for
+from .conftest import login, make_settings, pdf_bytes, wait_for
 
 
 def test_healthz(client):
@@ -62,6 +62,7 @@ def test_print_validation(client):
 def test_upload_size_limit(tmp_path, printers, scanners):
     app = create_app(make_settings(tmp_path, max_upload_mb=1), printers, scanners)
     with TestClient(app) as c:
+        login(c)
         big = b"%PDF-1.4\n" + b"0" * (1024 * 1024 + 10)
         r = c.post("/api/print", files={"file": ("big.pdf", big)}, data={"printer": "Fake_Printer"})
         assert r.status_code == 413
@@ -73,6 +74,7 @@ def test_cancel_print(tmp_path, scanners):
     slow = FakePrinterBackend(steps_to_complete=10_000)
     app = create_app(make_settings(tmp_path), slow, scanners)
     with TestClient(app) as c:
+        login(c)
         r = c.post("/api/print", files={"file": ("a.pdf", pdf_bytes(1))},
                    data={"printer": "Fake_Printer"})
         job_id = r.json()["id"]
@@ -162,19 +164,5 @@ def test_ui_pages_render(client):
                       data={"printer": "Fake_Printer"})
     assert bad.status_code == 415 and "Unsupported file type" in bad.text
 
-
-def test_password_auth(tmp_path, printers, scanners):
-    app = create_app(make_settings(tmp_path, password="s3cret"), printers, scanners)
-    with TestClient(app) as c:
-        assert c.get("/healthz").status_code == 200
-        assert c.get("/api/jobs").status_code == 401
-        r = c.get("/jobs", follow_redirects=False)
-        assert r.status_code == 303 and r.headers["location"].startswith("/login")
-        assert c.get("/api/jobs", headers={"Authorization": "Bearer s3cret"}).status_code == 200
-
-        bad = c.post("/login", data={"password": "nope"}, follow_redirects=False)
-        assert bad.status_code == 401
-        ok = c.post("/login", data={"password": "s3cret", "next": "//evil.example"},
-                    follow_redirects=False)
-        assert ok.status_code == 303 and ok.headers["location"] == "/"
-        assert c.get("/api/jobs").status_code == 200
+    for path in ("/account", "/admin/users"):
+        assert client.get(path).status_code == 200, path

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<h2>Account: {{ user.username }} <span class="muted">({{ user.role }})</span></h2>
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<article>
+  <h3>Profile</h3>
+  <form method="post" action="/account/profile">
+    <label>Email <span class="muted">(default address for scan-to-email)</span>
+      <input type="email" name="email" value="{{ user.email }}" autocomplete="email">
+    </label>
+    {% if features.paperless %}
+    <label>Paperless API token <span class="muted">(from Paperless: your profile → API Auth Token; documents will be owned by you)</span>
+      <input type="password" name="paperless_token" value="{{ user.paperless_token }}" autocomplete="off">
+    </label>
+    {% endif %}
+    <button type="submit">Save</button>
+  </form>
+</article>
+
+<article>
+  <h3>Password</h3>
+  <form method="post" action="/account/password">
+    <label>Current password <input type="password" name="current" autocomplete="current-password" required></label>
+    <div class="grid-2">
+      <label>New password <input type="password" name="new" minlength="8" autocomplete="new-password" required></label>
+      <label>Repeat new password <input type="password" name="new2" minlength="8" autocomplete="new-password" required></label>
+    </div>
+    <button type="submit">Change password</button>
+  </form>
+</article>
+
+<article>
+  <h3>API token</h3>
+  <p class="muted">For scripts and the JSON API: <code>Authorization: Bearer &lt;token&gt;</code>. Creating a new token replaces the old one.</p>
+  {% if new_token %}
+  <p class="notice">Copy this token now. It will not be shown again:</p>
+  <pre><code>{{ new_token }}</code></pre>
+  {% endif %}
+  <div class="toolbar">
+    <form method="post" action="/account/token" class="inline">
+      <input type="hidden" name="action" value="new">
+      <button type="submit" class="outline">{{ "Replace token" if user.api_token_hash else "Create token" }}</button>
+    </form>
+    {% if user.api_token_hash %}
+    <form method="post" action="/account/token" class="inline">
+      <input type="hidden" name="action" value="revoke">
+      <button type="submit" class="outline secondary">Revoke token</button>
+    </form>
+    {% endif %}
+  </div>
+</article>
+
+<form method="post" action="/account/logout-everywhere">
+  <button type="submit" class="secondary outline">Log out on all devices</button>
+</form>
+{% endblock %}

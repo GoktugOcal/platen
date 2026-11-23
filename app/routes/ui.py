@@ -10,9 +10,17 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from ..auth import COOKIE_NAME, SESSION_MAX_AGE
-from ..models import ACTIVE_STATUSES, JobKind, JobStatus
-from ..services import COLOR_OPTIONS, DUPLEX_OPTIONS, ServiceError, Services
+from ..auth import COOKIE_NAME, set_session_cookie
+from ..models import ACTIVE_STATUSES, DeliveryStatus, JobKind, JobStatus, Role, User
+from ..services import (
+    COLOR_OPTIONS,
+    DUPLEX_OPTIONS,
+    DeliveryRequest,
+    PaperlessRequest,
+    ServiceError,
+    Services,
+)
+from ..users import UserError
 
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
@@ -41,24 +49,40 @@ templates.env.filters["localtime"] = _localtime
 templates.env.filters["filesize"] = _filesize
 templates.env.globals.update(
     DUPLEX_OPTIONS=DUPLEX_OPTIONS, COLOR_OPTIONS=COLOR_OPTIONS, JobStatus=JobStatus,
-    ACTIVE_STATUSES=ACTIVE_STATUSES,
+    ACTIVE_STATUSES=ACTIVE_STATUSES, DeliveryStatus=DeliveryStatus,
 )
 
 
-def _svc(request: Request) -> Services:
+def svc(request: Request) -> Services:
     return request.app.state.services
 
 
+def current_user(request: Request) -> User:
+    return request.state.user
+
+
+def require_admin(request: Request) -> User:
+    user = current_user(request)
+    if not user.is_admin:
+        raise ServiceError("Only admins can do this", 403)
+    return user
+
+
 def render(request: Request, name: str, status_code: int = 200, **context) -> HTMLResponse:
-    context.setdefault("auth_enabled", request.app.state.auth.enabled)
+    settings = request.app.state.settings
+    context.setdefault("user", getattr(request.state, "user", None))
+    context.setdefault("features", {
+        "email": settings.email_enabled, "paperless": settings.paperless_enabled,
+        "office": settings.office_enabled,
+    })
     return templates.TemplateResponse(request, name, context, status_code=status_code)
 
 
-def render_error(request: Request, exc: ServiceError) -> HTMLResponse:
-    return render(request, "error.html", status_code=exc.status_code, message=exc.message)
+def render_error(request: Request, message: str, status_code: int) -> HTMLResponse:
+    return render(request, "error.html", status_code=status_code, message=message)
 
 
-def _redirect(url: str) -> RedirectResponse:
+def redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
 
@@ -66,16 +90,21 @@ def _redirect(url: str) -> RedirectResponse:
 
 @router.get("/")
 async def index():
-    return _redirect("/print")
+    return redirect("/print")
+
+
+async def _print_page(request: Request, status_code: int = 200, selected: str | None = None,
+                      form: dict | None = None, error: str | None = None) -> HTMLResponse:
+    s, user = svc(request), current_user(request)
+    return render(request, "print.html", status_code=status_code,
+                  printers=await s.list_printers(user), selected=selected,
+                  recent=s.list_jobs(user, kind=JobKind.PRINT, limit=5),
+                  accept=",".join(s.accepted_upload_types), form=form or {}, error=error)
 
 
 @router.get("/print")
 async def print_page(request: Request, printer: str | None = None):
-    svc = _svc(request)
-    printers = await svc.list_printers()
-    recent = svc.db.list_jobs(kind=JobKind.PRINT, limit=5)
-    return render(request, "print.html", printers=printers, selected=printer, recent=recent,
-                  form={}, error=None)
+    return await _print_page(request, selected=printer)
 
 
 @router.post("/print")
@@ -88,58 +117,63 @@ async def print_submit(
     color_mode: str = Form(""),
     page_range: str = Form(""),
 ):
-    svc = _svc(request)
     try:
-        job = await svc.create_print_job(file, printer, copies, duplex, color_mode, page_range)
+        job = await svc(request).create_print_job(current_user(request), file, printer, copies,
+                                                  duplex, color_mode, page_range)
     except ServiceError as exc:
-        printers = await svc.list_printers()
         form = {"copies": copies, "duplex": duplex, "color_mode": color_mode,
                 "page_range": page_range}
-        return render(request, "print.html", status_code=exc.status_code, printers=printers,
-                      selected=printer, recent=svc.db.list_jobs(kind=JobKind.PRINT, limit=5),
-                      form=form, error=exc.message)
-    return _redirect(f"/jobs/{job.id}")
+        return await _print_page(request, exc.status_code, printer, form, exc.message)
+    return redirect(f"/jobs/{job.id}")
 
 
 # --- scan ------------------------------------------------------------------
 
 @router.get("/scan")
 async def scan_page(request: Request, device: str | None = None, refresh: bool = False):
-    svc = _svc(request)
-    scanners = await svc.list_scanners(refresh=refresh)
-    selected = next((s for s in scanners if s.id == device), scanners[0] if scanners else None)
+    s = svc(request)
+    scanners = await s.list_scanners(refresh=refresh)
+    selected = next((x for x in scanners if x.id == device), scanners[0] if scanners else None)
     caps, error = None, None
     if selected:
         try:
-            caps = await svc.scanner_caps(selected.id)
+            caps = await s.scanner_caps(selected.id)
         except ServiceError as exc:
             error = exc.message
-    sessions = svc.db.list_jobs(kind=JobKind.SCAN, status=JobStatus.OPEN, limit=10)
     return render(request, "scan.html", scanners=scanners, selected=selected, caps=caps,
-                  error=error, sessions=sessions)
+                  error=error, sessions=s.open_sessions(current_user(request)))
 
 
 @router.post("/scan")
 async def scan_start(request: Request, device: str = Form(...), dpi: int = Form(...),
                      mode: str = Form(...)):
-    job = await _svc(request).create_scan_session(device, dpi, mode)
-    return _redirect(f"/scan/{job.id}")
+    job = await svc(request).create_scan_session(current_user(request), device, dpi, mode)
+    return redirect(f"/scan/{job.id}")
+
+
+def _session_page(request: Request, job_id: str, status_code: int = 200,
+                  error: str | None = None) -> HTMLResponse:
+    s, user = svc(request), current_user(request)
+    job = s.get_job(job_id, user)
+    return render(request, "scan_session.html", status_code=status_code, job=job,
+                  pages=s.db.list_pages(job_id), error=error,
+                  default_email=user.email,
+                  paperless_ready=bool(user.paperless_token
+                                       or request.app.state.settings.paperless_token))
 
 
 @router.get("/scan/{job_id}")
 async def scan_session(request: Request, job_id: str):
-    svc = _svc(request)
-    job = svc.get_job(job_id)
+    job = svc(request).get_job(job_id, current_user(request))
     if job.kind != JobKind.SCAN:
         raise ServiceError("Not a scan job", 404)
     if job.status != JobStatus.OPEN:
-        return _redirect(f"/jobs/{job_id}")
-    return render(request, "scan_session.html", job=job, pages=svc.db.list_pages(job_id),
-                  error=None)
+        return redirect(f"/jobs/{job_id}")
+    return _session_page(request, job_id)
 
 
 async def _pages_fragment(request: Request, job_id: str, action) -> HTMLResponse:
-    svc = _svc(request)
+    s, user = svc(request), current_user(request)
     error = None
     try:
         result = action()
@@ -147,59 +181,91 @@ async def _pages_fragment(request: Request, job_id: str, action) -> HTMLResponse
             await result
     except ServiceError as exc:
         error = exc.message
-    return render(request, "_scan_pages.html", job=svc.get_job(job_id),
-                  pages=svc.db.list_pages(job_id), error=error)
+    return render(request, "_scan_pages.html", job=s.get_job(job_id, user),
+                  pages=s.db.list_pages(job_id), error=error)
 
 
 @router.post("/scan/{job_id}/pages")
 async def scan_add_page(request: Request, job_id: str):
-    return await _pages_fragment(request, job_id, lambda: _svc(request).scan_page(job_id))
+    user = current_user(request)
+    return await _pages_fragment(request, job_id,
+                                 lambda: svc(request).scan_page(job_id, user))
 
 
 @router.post("/scan/{job_id}/pages/{page_id}/rescan")
 async def scan_rescan_page(request: Request, job_id: str, page_id: str):
+    user = current_user(request)
     return await _pages_fragment(
-        request, job_id, lambda: _svc(request).scan_page(job_id, replace_page_id=page_id)
+        request, job_id, lambda: svc(request).scan_page(job_id, user, replace_page_id=page_id)
     )
 
 
 @router.post("/scan/{job_id}/pages/{page_id}/delete")
 async def scan_delete_page(request: Request, job_id: str, page_id: str):
-    return await _pages_fragment(
-        request, job_id, lambda: _svc(request).delete_page(job_id, page_id)
-    )
+    user = current_user(request)
+    return await _pages_fragment(request, job_id,
+                                 lambda: svc(request).delete_page(job_id, page_id, user))
 
 
 @router.get("/scan/{job_id}/pages/{page_id}/thumb")
 async def scan_thumb(request: Request, job_id: str, page_id: str):
-    path = _svc(request).page_thumb(job_id, page_id)
+    path = svc(request).page_thumb(job_id, page_id, current_user(request))
     return FileResponse(path, media_type="image/jpeg",
                         headers={"Cache-Control": "private, max-age=3600"})
 
 
+@router.get("/scan/{job_id}/paperless-fields")
+async def scan_paperless_fields(request: Request, job_id: str):
+    """Lazy-loaded so a slow Paperless never delays the scan page."""
+    s, user = svc(request), current_user(request)
+    s.get_job(job_id, user)
+    try:
+        meta, error = await s.paperless_metadata(user), None
+    except ServiceError as exc:
+        meta, error = None, exc.message
+    return render(request, "_paperless_fields.html", meta=meta, error=error)
+
+
+def _int_or_none(value) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 @router.post("/scan/{job_id}/finish")
 async def scan_finish(request: Request, job_id: str):
-    svc = _svc(request)
+    form = await request.form()
+    req = DeliveryRequest()
+    if form.get("deliver_email"):
+        req.email = str(form.get("email", "")).strip()
+        if not req.email:
+            return _session_page(request, job_id, 400, "Enter an email address")
+    if form.get("deliver_paperless"):
+        req.paperless = PaperlessRequest(
+            title=str(form.get("pl_title", "")),
+            tags=[t for t in (_int_or_none(v) for v in form.getlist("pl_tags")) if t],
+            correspondent=_int_or_none(form.get("pl_correspondent")),
+            document_type=_int_or_none(form.get("pl_document_type")),
+        )
     try:
-        await svc.finish_scan(job_id)
+        await svc(request).finish_scan(job_id, current_user(request), req)
     except ServiceError as exc:
-        return render(request, "scan_session.html", status_code=exc.status_code,
-                      job=svc.get_job(job_id), pages=svc.db.list_pages(job_id),
-                      error=exc.message)
-    return _redirect(f"/jobs/{job_id}")
+        return _session_page(request, job_id, exc.status_code, exc.message)
+    return redirect(f"/jobs/{job_id}")
 
 
 @router.post("/scan/{job_id}/discard")
 async def scan_discard(request: Request, job_id: str):
-    await _svc(request).cancel_job(job_id)
-    return _redirect("/scan")
+    await svc(request).cancel_job(job_id, current_user(request))
+    return redirect("/scan")
 
 
 # --- jobs ------------------------------------------------------------------
 
 @router.get("/jobs")
 async def jobs_page(request: Request, kind: str = "", status: str = ""):
-    jobs = _svc(request).db.list_jobs(kind or None, status or None, limit=200)
+    jobs = svc(request).list_jobs(current_user(request), kind or None, status or None)
     query = urlencode({k: v for k, v in {"kind": kind, "status": status}.items() if v})
     polling = any(j.status in ACTIVE_STATUSES and j.status != JobStatus.OPEN for j in jobs)
     return render(request, "jobs.html", jobs=jobs, kind=kind, status=status, query=query,
@@ -208,21 +274,27 @@ async def jobs_page(request: Request, kind: str = "", status: str = ""):
 
 @router.get("/jobs/{job_id}")
 async def job_page(request: Request, job_id: str):
-    svc = _svc(request)
-    job = svc.get_job(job_id)
-    pages = svc.db.list_pages(job_id) if job.kind == JobKind.SCAN else []
-    return render(request, "job.html", job=job, pages=pages)
+    s, user = svc(request), current_user(request)
+    job = s.get_job(job_id, user)
+    deliveries = s.list_deliveries(job_id, user)
+    return render(request, "job.html", job=job, deliveries=deliveries)
 
 
 @router.post("/jobs/{job_id}/cancel")
 async def job_cancel(request: Request, job_id: str):
-    await _svc(request).cancel_job(job_id)
-    return _redirect(f"/jobs/{job_id}")
+    await svc(request).cancel_job(job_id, current_user(request))
+    return redirect(f"/jobs/{job_id}")
+
+
+@router.post("/jobs/{job_id}/deliveries/{delivery_id}/retry")
+async def delivery_retry(request: Request, job_id: str, delivery_id: str):
+    await svc(request).retry_delivery(job_id, delivery_id, current_user(request))
+    return redirect(f"/jobs/{job_id}")
 
 
 @router.get("/jobs/{job_id}/file")
 async def job_file(request: Request, job_id: str):
-    job, path = _svc(request).job_file(job_id)
+    job, path = svc(request).job_file(job_id, current_user(request))
     return FileResponse(path, filename=job.filename or path.name)
 
 
@@ -230,20 +302,21 @@ async def job_file(request: Request, job_id: str):
 
 @router.get("/devices")
 async def devices_page(request: Request):
-    svc = _svc(request)
-    printers, scanners = await asyncio.gather(svc.list_printers(), svc.list_scanners())
+    s = svc(request)
+    printers, scanners = await asyncio.gather(s.list_printers(), s.list_scanners())
     return render(request, "devices.html", printers=printers, scanners=scanners,
-                  messages=svc.device_messages)
+                  messages=s.device_messages)
 
 
 @router.post("/devices/refresh")
 async def devices_refresh(request: Request):
-    svc = _svc(request)
-    await asyncio.gather(svc.sync_printers(), svc.list_scanners(refresh=True))
-    return _redirect("/devices")
+    require_admin(request)
+    s = svc(request)
+    await asyncio.gather(s.sync_printers(), s.list_scanners(refresh=True))
+    return redirect("/devices")
 
 
-# --- login -----------------------------------------------------------------
+# --- login, logout, first-run setup ----------------------------------------
 
 def _safe_next(target: str | None) -> str:
     if target and target.startswith("/") and not target.startswith("//"):
@@ -253,30 +326,56 @@ def _safe_next(target: str | None) -> str:
 
 @router.get("/login")
 async def login_page(request: Request, next: str = "/"):
-    if not request.app.state.auth.enabled:
-        return _redirect("/")
-    return render(request, "login.html", next=_safe_next(next), error=None)
+    return render(request, "login.html", next=_safe_next(next), error=None, username="")
 
 
 @router.post("/login")
-async def login_submit(request: Request, password: str = Form(""), next: str = Form("/")):
-    auth = request.app.state.auth
-    if not auth.enabled:
-        return _redirect("/")
-    if not auth.check_password(password):
-        await asyncio.sleep(1)  # slow down guessing
+async def login_submit(request: Request, username: str = Form(""), password: str = Form(""),
+                       next: str = Form("/")):
+    state = request.app.state
+    keys = (f"ip:{request.client.host if request.client else '?'}",
+            f"user:{username.strip().lower()}")
+    delay = state.login_throttle.delay(*keys)
+    if delay:
+        await asyncio.sleep(delay)
+    user = await asyncio.to_thread(state.users.authenticate, username, password)
+    if user is None:
+        state.login_throttle.failed(*keys)
+        await asyncio.sleep(0.5)
         return render(request, "login.html", status_code=401, next=_safe_next(next),
-                      error="Wrong password")
-    response = _redirect(_safe_next(next))
-    response.set_cookie(
-        COOKIE_NAME, auth.make_cookie(), max_age=SESSION_MAX_AGE, httponly=True,
-        samesite="lax", secure=request.url.scheme == "https",
-    )
+                      error="Wrong username or password", username=username)
+    state.login_throttle.succeeded(*keys)
+    response = redirect(_safe_next(next))
+    set_session_cookie(response, request, state.sessions, user)
     return response
 
 
 @router.post("/logout")
 async def logout():
-    response = _redirect("/login")
+    response = redirect("/login")
     response.delete_cookie(COOKIE_NAME)
+    return response
+
+
+@router.get("/setup")
+async def setup_page(request: Request):
+    return render(request, "setup.html", error=None, form={})
+
+
+@router.post("/setup")
+async def setup_submit(request: Request, username: str = Form(""), password: str = Form(""),
+                       password2: str = Form(""), email: str = Form("")):
+    users = request.app.state.users
+    form = {"username": username, "email": email}
+    if not users.needs_setup:
+        return redirect("/login")
+    try:
+        if password != password2:
+            raise UserError("The passwords do not match")
+        user = await asyncio.to_thread(users.create, username, password, Role.ADMIN, email)
+    except UserError as exc:
+        return render(request, "setup.html", status_code=exc.status_code, error=exc.message,
+                      form=form)
+    response = redirect("/")
+    set_session_cookie(response, request, request.app.state.sessions, user)
     return response

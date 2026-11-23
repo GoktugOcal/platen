@@ -3,8 +3,9 @@
 {% block title %}Job {{ job.id }}{% endblock %}
 {% block content %}
 {% set active = job.status in ACTIVE_STATUSES and job.status != "open" %}
+{% set delivering = deliveries | selectattr("status", "in", ["pending", "sending"]) | list | length > 0 %}
 <section id="job-status"
-         {% if active %}hx-get="/jobs/{{ job.id }}" hx-trigger="every 2s" hx-select="#job-status" hx-swap="outerHTML"{% endif %}>
+         {% if active or delivering %}hx-get="/jobs/{{ job.id }}" hx-trigger="every 2s" hx-select="#job-status" hx-swap="outerHTML"{% endif %}>
   <h2>{{ "Print" if job.kind == "print" else "Scan" }} job {{ status(job.status) }}</h2>
   {% if job.error %}<p class="error" role="alert">{{ job.error }}</p>{% endif %}
 
@@ -14,6 +15,34 @@
     <p aria-busy="true">{{ "Printing…" if job.kind == "print" else "Building the PDF…" }}</p>
   {% endif %}
 
+  {% if deliveries %}
+  <h3>Deliveries</h3>
+  <table>
+    <tbody>
+    {% for d in deliveries %}
+      <tr>
+        <th>{{ "Email" if d.kind == "email" else "Paperless" }}</th>
+        <td class="wrap">{{ d.target if d.kind == "email" else "" }}</td>
+        <td>{{ status(d.status) }}</td>
+        <td class="wrap">
+          {% if d.status in ("pending", "sending") %}<span aria-busy="true">Sending…</span>{% endif %}
+          {% if d.result %}{% if d.result_url %}<a href="{{ d.result_url }}" target="_blank" rel="noopener">{{ d.result }}</a>{% else %}{{ d.result }}{% endif %}{% endif %}
+          {% if d.error %}<span class="error">{{ d.error }}</span>{% endif %}
+        </td>
+        <td>
+          {% if d.status == "failed" and job.status == "done" %}
+          <form method="post" action="/jobs/{{ job.id }}/deliveries/{{ d.id }}/retry" class="inline">
+            <button class="small outline" type="submit">Retry</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h3>Details</h3>
   <table>
     <tbody>
       <tr><th>Device</th><td>{{ job.device_label or job.device }}</td></tr>

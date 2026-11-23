@@ -12,7 +12,7 @@ from .conftest import make_settings
 
 def _runner(tmp_path, pipelines):
     settings = make_settings(tmp_path, max_concurrent_jobs=2)
-    db = Database(settings.db_path)
+    db = Database(settings.db_url)
     return db, JobRunner(db, settings, FakePrinterBackend(), FakeScannerBackend(), pipelines)
 
 

@@ -1,19 +1,44 @@
 """Pipeline steps. Each step does one thing and records its result on the job.
 
-Print:  count_print_pages -> submit_print -> wait_print
-Scan:   build_scan_pdf   (pages are captured interactively before the job is queued)
+Print:  convert_document -> count_print_pages -> submit_print -> wait_print
+Scan:   build_scan_pdf -> run_deliveries
+        (pages are captured interactively before the job is queued)
 
-Future steps (OCR, email, Paperless upload) are added to these lists.
+Future steps (OCR, ...) are added to these lists.
 """
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from pathlib import Path
 
+from ..convert import convert_office
+from ..delivery import EmailError, PaperlessClient, PaperlessError, send_pdf
 from ..devices import PrinterError
-from ..models import JobStatus
-from ..pdf import build_pdf, count_pages, detect_type, page_range_count
+from ..models import Delivery, DeliveryKind, DeliveryStatus, JobStatus, utcnow
+from ..pdf import build_pdf, count_pages, detect_office, detect_type, page_range_count
 from .runner import JobCancelled, JobContext
+
+log = logging.getLogger(__name__)
+
+
+# --- print -------------------------------------------------------------------
+
+async def convert_document(ctx: JobContext) -> None:
+    """Office documents become PDF through Gotenberg; other files pass through."""
+    job = ctx.job()
+    src = Path(job.file_path)
+    with src.open("rb") as fh:
+        head = fh.read(4096)
+    if not detect_office(head, src.name):
+        return
+    out = ctx.job_dir / "converted.pdf"
+    await asyncio.to_thread(
+        convert_office, ctx.settings.gotenberg_url, src, out, ctx.settings.gotenberg_timeout,
+        ctx.transports.get("gotenberg"),
+    )
+    ctx.update(file_path=str(out))
 
 
 async def count_print_pages(ctx: JobContext) -> None:
@@ -67,6 +92,8 @@ async def wait_print(ctx: JobContext) -> None:
         await asyncio.sleep(ctx.settings.poll_interval)
 
 
+# --- scan --------------------------------------------------------------------
+
 async def build_scan_pdf(ctx: JobContext) -> None:
     job = ctx.job()
     pages = ctx.db.list_pages(job.id)
@@ -79,9 +106,72 @@ async def build_scan_pdf(ctx: JobContext) -> None:
     )
 
 
+async def run_deliveries(ctx: JobContext) -> None:
+    """Send the PDF to every pending delivery. Failures are recorded per delivery
+    and do not fail the job: the PDF stays available for download."""
+    for delivery in ctx.db.list_deliveries(ctx.job_id):
+        if delivery.status == DeliveryStatus.PENDING:
+            await deliver(ctx, delivery.id)
+
+
+async def deliver(ctx: JobContext, delivery_id: str) -> Delivery:
+    db = ctx.db
+    current = db.get_delivery(delivery_id)
+    delivery = db.update_delivery(delivery_id, status=DeliveryStatus.SENDING, error=None,
+                                  result=None, result_url=None, attempts=current.attempts + 1)
+    job = ctx.job()
+    try:
+        if not job.file_path or job.files_purged or not Path(job.file_path).is_file():
+            raise EmailError("The PDF is no longer available")
+        pdf = Path(job.file_path)
+        options = json.loads(delivery.options or "{}")
+        if delivery.kind == DeliveryKind.EMAIL:
+            subject = f"Scan: {options.get('title') or job.filename}"
+            body = (f"Scanned with Platen on {job.created_at:%Y-%m-%d %H:%M} UTC "
+                    f"({job.pages} page{'s' if job.pages != 1 else ''}, {job.dpi} DPI).\n")
+            result = await asyncio.to_thread(
+                send_pdf, ctx.settings, delivery.target, pdf, subject, body
+            )
+            url = None
+        elif delivery.kind == DeliveryKind.PAPERLESS:
+            result, url = await asyncio.to_thread(_paperless_upload, ctx, job.user, pdf, options)
+        else:
+            raise ValueError(f"unknown delivery kind {delivery.kind}")
+    except Exception as exc:  # noqa: BLE001 - a delivery must never fail the job
+        log.warning("delivery %s (%s) for job %s failed: %s", delivery_id, delivery.kind,
+                    job.id, exc)
+        return db.update_delivery(delivery_id, status=DeliveryStatus.FAILED,
+                                  error=str(exc)[:1000], finished_at=utcnow())
+    return db.update_delivery(delivery_id, status=DeliveryStatus.DONE, result=result,
+                              result_url=url, finished_at=utcnow())
+
+
+def _paperless_upload(ctx: JobContext, username: str, pdf: Path,
+                      options: dict) -> tuple[str, str | None]:
+    user = ctx.db.get_user_by_name(username)
+    token = (user.paperless_token if user else "") or ctx.settings.paperless_token
+    with PaperlessClient(ctx.settings.paperless_url, token,
+                         transport=ctx.transports.get("paperless")) as client:
+        task_id = client.upload(
+            pdf, title=options.get("title") or "", tags=options.get("tags") or [],
+            correspondent=options.get("correspondent"),
+            document_type=options.get("document_type"),
+        )
+        result = client.wait(task_id, ctx.settings.paperless_wait,
+                             interval=ctx.settings.poll_interval)
+        if result.status == "SUCCESS":
+            if result.document_id:
+                return (f"Added to Paperless as document #{result.document_id}",
+                        client.document_url(result.document_id))
+            return "Added to Paperless", None
+        if result.status in ("FAILURE", "REVOKED"):
+            raise PaperlessError(result.message or "Paperless could not consume the document")
+        return f"Accepted by Paperless, still processing (task {task_id})", None
+
+
 PIPELINES = {
-    "print": [count_print_pages, submit_print, wait_print],
-    "scan": [build_scan_pdf],
+    "print": [convert_document, count_print_pages, submit_print, wait_print],
+    "scan": [build_scan_pdf, run_deliveries],
 }
 
 RESUME_PRINT = [wait_print]

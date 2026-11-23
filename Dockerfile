@@ -34,7 +34,7 @@ RUN chmod +x docker/entrypoint.sh && mkdir -p /data
 
 # ---- test: run the test suite inside the runtime image -------------------------
 FROM runtime AS test
-RUN pip install --no-cache-dir pytest httpx
+RUN pip install --no-cache-dir pytest
 COPY tests ./tests
 RUN pytest
 
